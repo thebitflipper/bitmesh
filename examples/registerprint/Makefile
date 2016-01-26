@@ -10,3 +10,6 @@ clean:
 
 %.upload: %.hex
 	avrdude -B 5 -c usbasp -p m328p -U flash:w:$<
+
+fuses:
+	avrdude -v -B 5 -c usbasp -p m328p -U lfuse:w:0x62:m -U hfuse:w:0xd9:m -U efuse:w:0x07:m
