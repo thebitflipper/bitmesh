@@ -16,7 +16,9 @@
   PD7|13  16|PB2 CSN
   PB0|14  15|PB1
 */
-
+#ifndef __AVR_ATmega328P__
+#define __AVR_ATmega328P__
+#endif
 #define F_CPU 8000000UL
 
 #include <avr/io.h>
@@ -117,7 +119,7 @@ void init (void) {
 void printRegisters(){
 	unsigned char input[5];
 	/* Loop through all the registers */
-	for (int i = 0; i < (sizeof(addresses)/sizeof(addresses[0])); i++){
+	for (int i = 0; i < (int)(sizeof(addresses)/sizeof(addresses[0])); i++){
 		/* Select the device */
 		CSN_lo;
 		/* Send the read command */
