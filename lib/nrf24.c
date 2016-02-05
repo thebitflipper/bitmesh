@@ -138,8 +138,16 @@ void NRF24_set_pl_len(uint8_t pipe_nr, uint8_t len){
 /* void NRF24_enable_dyn_pl(uint8_t pipe_nr){} */
 /* void NRF24_disable_dyn_pl(uint8_t pipe_nr); */
 
-/* void NRF24_enable_ack(uint8_t pipe_nr); */
-/* void NRF24_disable_ack(uint8_t pipe_nr); */
+void NRF24_enable_ack(uint8_t pipe_nr){
+	uint8_t r = NRF24_get_register(EN_AA);
+	r = r | (1 << pipe_nr);
+	NRF24_set_register(EN_AA, r);
+}
+void NRF24_disable_ack(uint8_t pipe_nr){
+	uint8_t r = NRF24_get_register(EN_AA);
+	r = r & (~(1 << pipe_nr));
+	NRF24_set_register(EN_AA, r);
+}
 
 /* void NRF24_enable_dyn_ack(); */
 /* void NRF24_disable_dyn_ack(); */
@@ -152,7 +160,7 @@ void NRF24_set_addr_w(uint8_t addr_w){
 	NRF24_set_register(SETUP_AW, addr_w);
 }
 void NRF24_set_rx_addr(uint8_t pipe_nr, uint8_t *addr){
-	uint8_t aw = NRF24_get_register(SETUP_AW);
+	uint8_t aw = NRF24_get_register(SETUP_AW) + 2;
 	CSN_lo;
 	nrf24_status = SPI_Transmit(W_REGISTER | (REGISTER_MASK & (RX_ADDR_P0 + pipe_nr)));
 	if(pipe_nr < 2){
@@ -165,7 +173,7 @@ void NRF24_set_rx_addr(uint8_t pipe_nr, uint8_t *addr){
 	CSN_hi;
 }
 void NRF24_set_tx_addr(uint8_t *addr){
-	uint8_t aw = NRF24_get_register(SETUP_AW);
+	uint8_t aw = NRF24_get_register(SETUP_AW) + 2;
 	CSN_lo;
 	nrf24_status = SPI_Transmit(W_REGISTER | (REGISTER_MASK & TX_ADDR));
 	for(uint8_t i = 0; i < aw; i++){
@@ -202,8 +210,9 @@ uint8_t NRF24_send_packet(uint8_t *addr, uint8_t *payload, uint8_t pl_length, ui
 	_delay_us(15);
 	CE_lo;
 
-	nrf24_waiting_for_ack = 1;
-
+	if(use_ack){
+		nrf24_waiting_for_ack = 1;
+	}
 
 	return 1;
 }

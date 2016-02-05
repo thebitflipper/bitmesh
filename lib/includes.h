@@ -13,6 +13,8 @@
 #include <util/delay.h>
 #include <stdlib.h>
 
+#define ADDR {0x8E, 0x89, 0xBE, 0xD6, 0x00}
+
 #define NRF24_PORT PORTB
 #define NRF24_DDR  DDRB
 #define CE	 PB1
