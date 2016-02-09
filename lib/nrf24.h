@@ -47,7 +47,9 @@ void NRF24_disable_pipe(uint8_t pipe_nr);
 void NRF24_set_addr_w(uint8_t addr_w);
 void NRF24_set_rx_addr(uint8_t pipe_nr, uint8_t *addr);
 
-uint8_t NRF24_send_packet(uint8_t *addr, uint8_t *payload, uint8_t pl_length, uint8_t use_ack);
+uint8_t NRF24_send_packet(uint8_t *addr, uint8_t *payload,
+			  uint8_t pl_length, uint8_t use_ack,
+			  uint8_t sync);
 
 void NRF24_irq_handle();
 void NRF24_poll_handle();

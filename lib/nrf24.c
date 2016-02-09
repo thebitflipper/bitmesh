@@ -88,7 +88,7 @@ void NRF24_init(
 	NRF24_set_addr_w(5);
 
 	/* Default to 1ms wait and 5 retransmits */
-	NRF24_set_register(SETUP_RETR, (0x0F << ARD) | (0x05 << ARC));
+	NRF24_set_register(SETUP_RETR, (0x0F << ARD) | (0x0F << ARC));
 
 	/* Deafult channel 2 */
 	NRF24_set_channel(2);
@@ -286,7 +286,9 @@ void NRF24_set_tx_addr(uint8_t *addr){
 	CSN_hi;
 }
 
-uint8_t NRF24_send_packet(uint8_t *addr, uint8_t *payload, uint8_t pl_length, uint8_t use_ack){
+uint8_t NRF24_send_packet(uint8_t *addr, uint8_t *payload,
+			  uint8_t pl_length, uint8_t use_ack,
+			  uint8_t sync){
 	/* uint8_t aw = NRF24_get_register(SETUP_AW); */
 	if(nrf24_status & (1 << TX_FULL) || nrf24_waiting_for_ack){
 		/* No space for payload */
@@ -326,7 +328,26 @@ uint8_t NRF24_send_packet(uint8_t *addr, uint8_t *payload, uint8_t pl_length, ui
 	CE_lo;
 
 	if(use_ack){
-		nrf24_waiting_for_ack = 1;
+		if(sync){
+			/* Spin until ack or max rt */
+			do {
+				_delay_ms(1);
+				NRF24_get_status();
+			} while (nrf24_status & ((1<<MAX_RT)|(1<<TX_DS)));
+
+			nrf24_packetstatus = NRF24_NOT_SENT;
+
+			if(nrf24_status & (1<<MAX_RT)){
+				/* No ack */
+				return 0;
+			} else {
+				/* Ack */
+				return 1;
+			}
+
+		} else {
+			nrf24_waiting_for_ack = 1;
+		}
 	}
 
 	nrf24_packetstatus = NRF24_IN_TRANSIT;
