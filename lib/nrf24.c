@@ -88,7 +88,7 @@ void NRF24_init(
 	NRF24_set_addr_w(5);
 
 	/* Default to 1ms wait and 5 retransmits */
-	NRF24_set_register(SETUP_RETR, (0x0F << ARD) | (0x0F << ARC));
+	NRF24_set_register(SETUP_RETR, (0x03 << ARD) | (0x0F << ARC));
 
 	/* Deafult channel 2 */
 	NRF24_set_channel(2);

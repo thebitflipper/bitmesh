@@ -28,7 +28,7 @@ int main() {
 	for(;;){
 		mesh_poll(systick);
 
-		as(CONFIG,     0x0B);
+		/* as(CONFIG,     0x0B); */
 		as(EN_AA,      0x3F);
 		/* as(EN_RXADDR,  0x07); */
 		/* as(SETUP_AW,   0x03); */

@@ -1,6 +1,7 @@
 #include "mesh.h"
 #include "nrf24.h"
 #include "uart.h"
+#include "includes.h"
 #include <string.h>
 /* #define MESH_ADDR_BROADCAST  0xFF */
 #define MESH_ADDR_BROADCAST  0xFF
@@ -26,7 +27,9 @@ enum MESH_PACKET {
 	MESH_PACKET_PING        = 0x04,
 	MESH_PACKET_PONG        = 0x05
 };
-
+#define fmt16 "0x%02hhX%02hhX%02hhX%02hhX%02hhX%02hhX%02hhX%02hhX%02hhX%02hhX%02hhX%02hhX%02hhX%02hhX%02hhX%02hhX"
+#define tx16 mesh.tx_buffer[0],mesh.tx_buffer[1],mesh.tx_buffer[2],mesh.tx_buffer[3],mesh.tx_buffer[4],mesh.tx_buffer[5],mesh.tx_buffer[6],mesh.tx_buffer[7],mesh.tx_buffer[8],mesh.tx_buffer[9],mesh.tx_buffer[10],mesh.tx_buffer[11],mesh.tx_buffer[12],mesh.tx_buffer[13],mesh.tx_buffer[14],mesh.tx_buffer[15]
+#define rx16 mesh.rx_buffer[0],mesh.rx_buffer[1],mesh.rx_buffer[2],mesh.rx_buffer[3],mesh.rx_buffer[4],mesh.rx_buffer[5],mesh.rx_buffer[6],mesh.rx_buffer[7],mesh.rx_buffer[8],mesh.rx_buffer[9],mesh.rx_buffer[10],mesh.rx_buffer[11],mesh.rx_buffer[12],mesh.rx_buffer[13],mesh.rx_buffer[14],mesh.rx_buffer[15]
 struct mesh_state {
 	/* Last time mesh poll ran */
 	unsigned long last_ms;
@@ -57,21 +60,29 @@ uint8_t mesh_get_parent(uint8_t addr){
 
 uint8_t mesh_next_hop(uint8_t target_addr){
 	/* TODO: Make sure this does not hang */
+	D("Calculating next hop for %d\n", target_addr);
 	if(target_addr == MESH_ADDR_SINK){
+		/* The target is the sink, send up */
 		return mesh.parent;
 	}
+
+
+
+	/* Check if the target is below us */
 	uint8_t prev = target_addr;
-	uint8_t up   = target_addr;
-	while (up != 255 || up != MESH_ADDR_SINK){
+	uint8_t up   = mesh_get_parent(target_addr);
+	while (up != 255){
+		D("PREV %d UP %d\n", prev, up);
 		if(up == mesh.addr){
 			return prev;
 		}
 		prev = up;
 		up = mesh_get_parent(up);
 	}
+
+	/* The target is not below us and we are the sink */
 	if (mesh.addr == MESH_ADDR_SINK){
-		/* Not routable */
-		printf("NOT ROUTABLE!!!!!\n");
+		D("NOT ROUTABLE!!!!!\n");
 		return 255;
 	} else {
 		return mesh.parent;
@@ -79,14 +90,23 @@ uint8_t mesh_next_hop(uint8_t target_addr){
 }
 
 uint8_t mesh_send(uint8_t addr, uint8_t sync){
+	/* Calculate next hop */
+	uint8_t next_hop = mesh_next_hop(addr);
+
+	if(next_hop != 255){
+		uint8_t addr_buffer[5] = ADDR;
+		addr_buffer[4] = next_hop;
+		D("SEND(%d, n%2d, f%2d) "fmt16"\n", mesh.addr, next_hop, addr, tx16);
+		return NRF24_send_packet(addr_buffer, mesh.tx_buffer, 16, 1, sync);
+	}
+	return 0;
+}
+uint8_t mesh_send_direct(uint8_t addr, uint8_t sync){
+	/* Calculate next hop */
+
 	uint8_t addr_buffer[5] = ADDR;
 	addr_buffer[4] = addr;
-	printf("SEND(%d) -> 0x", addr_buffer[4]);
-	for(int i = 0; i < 16; i++){
-		printf("%02hhX", mesh.tx_buffer[i]);
-	}
-	printf("\n");
-
+	D("SEND(n%2d, f%2d) "fmt16"\n", addr, addr, tx16);
 	return NRF24_send_packet(addr_buffer, mesh.tx_buffer, 16, 1, sync);
 }
 
@@ -97,11 +117,13 @@ void mesh_send_ping(uint8_t addr){
 	/* To */
 	mesh.tx_buffer[2] = addr;
 
-	mesh_send(mesh_next_hop(addr), 0);
-	/* uint8_t addr_c[5] = ADDR; */
-        /* addr_c[4] = mesh.parent; */
-        /* /\* addr_c[4] = mesh.parent; *\/ */
-	/* NRF24_send_packet(addr_c, mesh.tx_buffer, 16, 1, 0); */
+	for (int i = 0; i < 10; ++i) {
+		if(mesh_send(addr, 1)){
+			break;
+		}
+		_delay_ms(1);
+	}
+
 }
 void mesh_send_pong(uint8_t addr){
 	mesh.tx_buffer[0] = (unsigned char)MESH_PACKET_PONG;
@@ -110,11 +132,12 @@ void mesh_send_pong(uint8_t addr){
 	/* To */
 	mesh.tx_buffer[2] = addr;
 
-	mesh_send(mesh_next_hop(addr), 0);
-	/* uint8_t addr_c[5] = ADDR; */
-        /* addr_c[4] = mesh.parent; */
-        /* /\* addr_c[4] = mesh.parent; *\/ */
-	/* NRF24_send_packet(addr_c, mesh.tx_buffer, 16, 1, 0); */
+	for (int i = 0; i < 10; ++i) {
+		if(mesh_send(addr, 1)){
+			break;
+		}
+		_delay_ms(1);
+	}
 }
 
 uint8_t mesh_publish_route(uint8_t addr, uint8_t node, uint8_t new_parent){
@@ -126,10 +149,7 @@ uint8_t mesh_publish_route(uint8_t addr, uint8_t node, uint8_t new_parent){
 	mesh.tx_buffer[3] = node;
 	mesh.tx_buffer[4] = new_parent;
 
-	/* uint8_t parent[5] = ADDR; */
-	/* parent[4] = mesh.parent; */
-	return mesh_send(mesh.parent,1);
-	/* return NRF24_send_packet(parent, mesh.tx_buffer, 16, 1, 1); */
+	return mesh_send(addr,1);
 }
 
 
@@ -152,7 +172,7 @@ void mesh_init(uint8_t is_sink){
 	mesh.parent = 0;
 
 	for (int i = 0; i < MESH_MAX_NODES; i++){
-		mesh.route[0] = 255;
+		mesh.route[i] = 255;
 	}
 
 	NRF24_init(0, 1);
@@ -211,6 +231,7 @@ void mesh_route_dump(){
 }
 
 void mesh_poll(unsigned long ms){
+	/* D("POLL\n"); */
 	/* uint8_t a[5]; */
 	/* uint8_t r = NRF24_get_register(0x07); */
 	/* if ( r != 0x0E ){ */
@@ -238,12 +259,12 @@ void mesh_poll(unsigned long ms){
 
 	switch (NRF24_get_packetstatus()) {
 	case NRF24_MAX_RT : {
-		printf("NO ack received +++++++++\n");
+		D("NO ack received +++++++++\n");
 		NRF24_reset_packetstatus();
 		break;
 	}
 	case NRF24_SENT : {
-		printf("Packet sent ---------------\n");
+	        D("Packet sent--------------\n");
 		NRF24_reset_packetstatus();
 		break;
 	}
@@ -252,23 +273,20 @@ void mesh_poll(unsigned long ms){
 	uint8_t pld_len;
 	uint8_t pipe_nr;
 	while(NRF24_read_payload(mesh.rx_buffer, &pld_len, &pipe_nr)){
-		printf("D(%d) -> 0x",pipe_nr);
-		for(int i = 0; i < 16; i++){
-			printf("%02hhX", mesh.rx_buffer[i]);
-		}
-		printf("\n");
+		D("D(%d) -> 0x" fmt16 "\n",pipe_nr, rx16);
 		if(pipe_nr == MESH_PIPE_BRD){
 			/* Broadcast packet */
 			switch (mesh.rx_buffer[0]) {
 			case MESH_PACKET_BRD_CONNECT: {
-				printf("Node %d got BRD_CONNECT from %d\n",
+				D("Node %d got BRD_CONNECT from %d\n",
 				       mesh.addr,
 				       mesh.rx_buffer[1]);
 				/* Respond */
 				mesh.tx_buffer[0] = (unsigned char)MESH_PACKET_OFFER;
 				mesh.tx_buffer[1] = mesh.addr;
 				mesh.tx_buffer[2] = mesh.hopcount;
-				mesh_send(mesh.rx_buffer[1], 0);
+				mesh_send_direct(mesh.rx_buffer[1], 0);
+				D("Sent offer to %d\n", mesh.rx_buffer[1]);
 				break;
 			}}
 		} else {
@@ -278,66 +296,71 @@ void mesh_poll(unsigned long ms){
 				/* Packets final destination is not
 				   for us. */
 				for_us = 0;
-				printf("Forwarding packet\n");
+				D("Forwarding packet\n");
 				memcpy(mesh.tx_buffer, mesh.rx_buffer, 16);
-				uint8_t next = mesh_next_hop(mesh.rx_buffer[2]);
-				if(next){
-					mesh_send(next, 1);
-				} else {
-					printf("Not routable!\n");
+				uint8_t forwarded = 0;
+				for (int i = 0; i< 10; ++i){
+					if(mesh_send(mesh.rx_buffer[2], 1)){
+						forwarded=1;
+						break;
+					}
+					_delay_ms(3);
+				}
+				if(!forwarded){
+					D("Lost connection to %d!\n", mesh_next_hop(mesh.rx_buffer[2]));
 				}
 			}
 
 			switch (mesh.rx_buffer[0]) {
 			case MESH_PACKET_OFFER: {
-				printf("Node %d got PACKET_OFFER from %d with hopc %d\n",
+				D("Node %d got PACKET_OFFER from %d with hopc %d\n",
 				      mesh.addr,
 				      mesh.rx_buffer[1],
 				      mesh.rx_buffer[2]);
 				if(mesh.state == MESH_STATE_BRD_SENT){
-					printf("Trying to accept route!\n");
+					D("Trying to accept route!\n");
 					/* Connect to the node */
 					mesh.parent = mesh.rx_buffer[1];
 					mesh.hopcount = mesh.rx_buffer[2] + 1;
 					if (mesh_publish_route(MESH_ADDR_SINK,
 							       mesh.addr,
 							       mesh.parent)){
-						printf("Connected!\n");
+						D("Connected!\n");
 						mesh.state = MESH_STATE_CONNECTED;
 						mesh.last_state_ms = ms;
 					} else {
-						printf("Failed to connect!\n");
+						D("Failed to connect!\n");
 					}
 				}
 				break;
 			}
 			case MESH_PACKET_PING: {
-				printf("Node %d got PING from %d to %d\n",
+				D("Node %d got PING from %d to %d\n",
 				       mesh.addr,
 				       mesh.rx_buffer[1],
 				       mesh.rx_buffer[2]);
 				if(for_us){
-					printf("Sending pong\n");
+					D("Sending pong\n");
 					mesh_send_pong(mesh.rx_buffer[1]);
 				} else {
 					/* Ping not for us! */
-					printf("Ping not for us!\n");
+					D("Ping not for us!\n");
 				}
 				break;
 			}
 			case MESH_PACKET_PONG: {
-				printf("Node %d got PONG from %d to %d\n",
+				D("Node %d got PONG from %d to %d\n",
 				       mesh.addr,
 				       mesh.rx_buffer[1],
 				       mesh.rx_buffer[2]);
 				if(!for_us){
 					/* Pong not for us! */
-					printf("Pong not for us!\n");
+					D("Pong not for us!\n");
 				}
 				break;
 			}
 			case MESH_PACKET_NEW_ROUTE: {
-				printf("New route from %hhd to %hhd. Node %hhd has parent %hhd\n",
+				D("New route from %hhd to %hhd. Node %hhd has parent %hhd\n",
 				       mesh.rx_buffer[1],
 				       mesh.rx_buffer[2],
 				       mesh.rx_buffer[3],
@@ -346,16 +369,19 @@ void mesh_poll(unsigned long ms){
 
 				if(mesh.addr == MESH_ADDR_SINK && mesh.rx_buffer[1] == 0){
 					/* We need to give a new address to node 0 */
-					printf("UPDATING ADDRESS FOR NODE 0\n");
+					D("UPDATING ADDRESS FOR NODE 0\n");
 					memcpy(mesh.tx_buffer, mesh.rx_buffer, 16);
 					mesh.tx_buffer[2] = MESH_ADDR_NEW_DEVICE;
-					mesh.tx_buffer[3] = new_address++;
+					mesh.tx_buffer[3] = new_address;
 					for (int i = 0; i < 10; ++i){
 						if(mesh_send(MESH_ADDR_NEW_DEVICE, 1))
 							break;
 					}
+
 					mesh.route[new_address] = mesh.rx_buffer[4];
-					mesh.route[0] = 0;
+					/* mesh.route[0] = 255; */
+
+					new_address++;
 				}
 
 				if(mesh.addr == MESH_ADDR_NEW_DEVICE &&
@@ -366,7 +392,7 @@ void mesh_poll(unsigned long ms){
 					addr[4] = mesh.addr;
 					NRF24_set_rx_addr(MESH_PIPE_ADDR, addr);
 
-					printf("Our address is now %d\n", mesh.addr);
+					D("Our address is now %d\n", mesh.addr);
 
 				}
 
@@ -383,7 +409,7 @@ void mesh_poll(unsigned long ms){
 			/* Send request again */
 			mesh_send_brd_connect();
 			/* mesh_send_ping(0x01); */
-			printf("Requesting connection!\n");
+			D("Requesting connection!\n");
 			/* uint8_t addr[5] = ADDR; */
 			/* addr[4] = 0x01; */
 			/* NRF24_send_packet(addr, mesh_buffer, 16, 1); */
@@ -393,7 +419,7 @@ void mesh_poll(unsigned long ms){
 	}
 	case MESH_STATE_CONNECTED: {
 		if(mesh.addr != MESH_ADDR_SINK && (ms - mesh.last_ping) > 5000){
-			printf("Send Ping\n");
+			D("Send Ping\n");
 			mesh_send_ping(MESH_ADDR_SINK);
 			mesh.last_ping = ms;
 		}
