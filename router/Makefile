@@ -21,4 +21,7 @@ clean:
 	avr-objcopy -j .text -j .data -O ihex $< $@
 
 %.upload: %.hex
-	avrdude -B 5 -c usbasp -p m328p -U flash:w:$<
+	avrdude -B 0.5 -c usbasp -p m328p -U flash:w:$<
+
+fuses:
+	avrdude -v -B 5 -c usbasp -p m328p -U lfuse:w:0xE2:m -U hfuse:w:0xd9:m -U efuse:w:0x07:m

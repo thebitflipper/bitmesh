@@ -88,7 +88,7 @@ void NRF24_init(
 	NRF24_set_addr_w(5);
 
 	/* Default to 1ms wait and 5 retransmits */
-	NRF24_set_register(SETUP_RETR, (0x03 << ARD) | (0x0F << ARC));
+	NRF24_set_register(SETUP_RETR, (0x05 << ARD) | (0x03 << ARC));
 
 	/* Deafult channel 2 */
 	NRF24_set_channel(2);
@@ -291,14 +291,19 @@ uint8_t NRF24_send_packet(uint8_t *addr, uint8_t *payload,
 			  uint8_t sync){
 	/* uint8_t aw = NRF24_get_register(SETUP_AW); */
 	if(nrf24_status & (1 << TX_FULL) || nrf24_waiting_for_ack){
+		if(nrf24_waiting_for_ack){
+			printf("WAITING FOR ACK!\n");
+		} else{
 		/* No space for payload */
-		printf("NO SPACE!\n");
+			printf("NO SPACE!\n");
+		}
 		return 0;
 	}
 	/* Go to TX mode */
 	CE_lo;
 
 	/* Go to TX mode */
+	NRF24_clear_bit(CONFIG, PRIM_RX);
 	NRF24_set_register(CONFIG, NRF24_get_register(CONFIG) & ~(1 << PRIM_RX));
 
 	NRF24_enable_pipe(0);
@@ -327,27 +332,33 @@ uint8_t NRF24_send_packet(uint8_t *addr, uint8_t *payload,
 	_delay_us(15);
 	CE_lo;
 
-	if(use_ack){
-		if(sync){
-			/* Spin until ack or max rt */
-			do {
-				_delay_ms(1);
-				NRF24_get_status();
-			} while (nrf24_status & ((1<<MAX_RT)|(1<<TX_DS)));
+	if(sync || !use_ack){
+		/* Spin until ack or max rt */
+		do {
+			_delay_ms(1);
+			NRF24_get_status();
+		} while (!(nrf24_status & ((1<<MAX_RT)|(1<<TX_DS))));
 
-			nrf24_packetstatus = NRF24_NOT_SENT;
+		nrf24_packetstatus = NRF24_NOT_SENT;
 
-			if(nrf24_status & (1<<MAX_RT)){
-				/* No ack */
-				return 0;
-			} else {
-				/* Ack */
-				return 1;
-			}
-
+		uint8_t ret;
+		if(nrf24_status & (1<<MAX_RT)){
+			/* No ack */
+			NRF24_set_bit(STATUS, MAX_RT);
+			ret = 0;
 		} else {
-			nrf24_waiting_for_ack = 1;
+			/* Ack */
+			NRF24_set_bit(STATUS, TX_DS);
+			ret = 1;
 		}
+		NRF24_flush_tx();
+		/* Go back directly to rx mode */
+		NRF24_set_bit(CONFIG, PRIM_RX);
+
+		return ret;
+
+	} else {
+		nrf24_waiting_for_ack = 1;
 	}
 
 	nrf24_packetstatus = NRF24_IN_TRANSIT;
