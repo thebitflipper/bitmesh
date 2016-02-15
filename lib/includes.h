@@ -7,7 +7,7 @@
 #endif
 
 #include <avr/io.h>
-
+#include  <avr/pgmspace.h>
 /* Internal */
 #define F_CPU 8000000UL
 #include <util/delay.h>
@@ -23,7 +23,7 @@
 #define DEBUG
 
 #ifdef DEBUG
-#define D(A,...) printf("D(%02d) %15s(%3d) " A, mesh.addr, __FILE__, __LINE__, ##__VA_ARGS__);
+#define D(A,...) printf_P(PSTR("D(%02d) %15s(%3d) " A), mesh.addr, __FILE__, __LINE__, ##__VA_ARGS__);
 #else
 #define D(A,...) { };
 #endif

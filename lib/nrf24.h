@@ -59,4 +59,6 @@ void NRF24_power_down();
 
 uint8_t NRF24_get_register(uint8_t reg);
 void NRF24_set_register(uint8_t reg, uint8_t val);
+
+void NRF24_print_registers();
 #endif

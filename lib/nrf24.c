@@ -266,7 +266,7 @@ void NRF24_set_rx_addr(uint8_t pipe_nr, uint8_t *addr){
 	CE_lo;
 	CSN_lo;
 	nrf24_status = SPI_Transmit(W_REGISTER | (REGISTER_MASK & (RX_ADDR_P0 + pipe_nr)));
-	if(pipe_nr < 2){
+ 	if(pipe_nr < 2){
 		for(uint8_t i = 0; i < aw; i++){
 			SPI_Transmit(addr[aw-i-1]);
 		}
@@ -306,7 +306,7 @@ uint8_t NRF24_send_packet(uint8_t *addr, uint8_t *payload,
 	NRF24_clear_bit(CONFIG, PRIM_RX);
 	NRF24_set_register(CONFIG, NRF24_get_register(CONFIG) & ~(1 << PRIM_RX));
 
-	NRF24_enable_pipe(0);
+	/* NRF24_enable_pipe(0); */
 
 	if(use_ack){
 		NRF24_set_rx_addr(0, addr);
@@ -408,4 +408,65 @@ void NRF24_power_up(){
 }
 void NRF24_power_down(){
 	NRF24_set_register(CONFIG, NRF24_get_register(CONFIG) & ~(1 << PWR_UP));
+}
+
+
+void NRF24_print_registers(){
+	struct address {
+		char name[12];
+		char addr;
+		unsigned char size;
+	};
+
+	struct address addresses[26] = {
+		{"CONFIG",      0x00, 1},
+		{"EN_AA",       0x01, 1},
+		{"EN_RXADDR",   0x02, 1},
+		{"SETUP_AW",    0x03, 1},
+		{"SETUP_RETR",  0x04, 1},
+		{"RF_CH",       0x05, 1},
+		{"RF_SETUP",    0x06, 1},
+		{"STATUS",      0x07, 1},
+		{"OBSERVE_TX",  0x08, 1},
+		{"RPD",	        0x09, 1},
+		{"RX_ADDR_P0",  0x0A, 5},
+		{"RX_ADDR_P1",  0x0B, 5},
+		{"RX_ADDR_P2",  0x0C, 1},
+		{"RX_ADDR_P3",  0x0D, 1},
+		{"RX_ADDR_P4",  0x0E, 1},
+		{"RX_ADDR_P5",  0x0F, 1},
+		{"TX_ADDR",     0x10, 5},
+		{"RX_PW_P0",    0x11, 1},
+		{"RX_PW_P1",    0x12, 1},
+		{"RX_PW_P2",    0x13, 1},
+		{"RX_PW_P3",    0x14, 1},
+		{"RX_PW_P4",    0x15, 1},
+		{"RX_PW_P5",    0x16, 1},
+		{"FIFO_STATUS", 0x17, 1},
+		{"DYNPD",       0x1C, 1},
+		{"FEATURE",     0x1D, 1},
+	};
+
+	unsigned char input[5];
+	for (int i = 0; i < (int)(sizeof(addresses)/sizeof(addresses[0])); i++){
+		/* Select the device */
+		CSN_lo;
+		/* Send the read command */
+		SPI_Transmit(addresses[i].addr);
+		/* Read all the bytes in that register */
+		for(int ii = 0; ii < addresses[i].size; ii++){
+			input[ii] = SPI_Transmit(0xff);
+		}
+		/* Unselect the device */
+		CSN_hi;
+
+		/* Print the register address, name, and content */
+		printf_P(PSTR("0x%02hhX %-11s 0x"),addresses[i].addr, addresses[i].name);
+		for(int ii = 0; ii < addresses[i].size; ii++){
+			printf_P(PSTR("%02hhX"), input[addresses[i].size-ii-1]);
+		}
+		putchar('\n');
+	}
+
+
 }

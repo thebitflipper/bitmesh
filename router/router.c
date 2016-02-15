@@ -25,6 +25,8 @@ int main() {
 	uart_init();
 	systick_init();
 	mesh_init(0);
+	printf("INIT!\n");
+	unsigned long p_delay = systick;
 	for(;;){
 		mesh_poll(systick);
 
@@ -39,6 +41,11 @@ int main() {
 		/* as(DYNPD,      0x00); */
 		/* as(FEATURE,    0x01); */
 		/* printf("test %d %lu\n", mesh_is_connected(), systick); */
+		if((systick - p_delay) > 10000){
+			NRF24_print_registers();
+			p_delay = systick;
+		}
+
 		_delay_ms(100);
 	}
 	return 0;
