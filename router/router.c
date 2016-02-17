@@ -26,12 +26,12 @@ int main() {
 	systick_init();
 	mesh_init(0);
 	printf("INIT!\n");
-	unsigned long p_delay = systick;
+	/* unsigned long p_delay = systick; */
 	for(;;){
 		mesh_poll(systick);
 
 		/* as(CONFIG,     0x0B); */
-		as(EN_AA,      0x3F);
+		/* as(EN_AA,      0x3F); */
 		/* as(EN_RXADDR,  0x07); */
 		/* as(SETUP_AW,   0x03); */
 		/* as(SETUP_RETR, 0x35); */
@@ -41,10 +41,10 @@ int main() {
 		/* as(DYNPD,      0x00); */
 		/* as(FEATURE,    0x01); */
 		/* printf("test %d %lu\n", mesh_is_connected(), systick); */
-		if((systick - p_delay) > 10000){
-			NRF24_print_registers();
-			p_delay = systick;
-		}
+		/* if((systick - p_delay) > 10000){ */
+		/* 	NRF24_print_registers(); */
+		/* 	p_delay = systick; */
+		/* } */
 
 		_delay_ms(100);
 	}

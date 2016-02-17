@@ -27,14 +27,14 @@ int main() {
 	systick_init();
 	mesh_init(1);
 	printf("Sink init!\n");
-	unsigned long p_delay = systick;
+	/* unsigned long p_delay = systick; */
 	for(;;){
 		mesh_poll(systick);
-		if(NRF24_get_register(0x09)){
-		}
-			printf(".");
+		/* if(NRF24_get_register(0x09)){ */
+		/* 	printf("."); */
+		/* } */
 		/* as(CONFIG,     0x0B); */
-		as(EN_AA,      0x3F);
+		/* as(EN_AA,      0x3F); */
 		/* as(EN_RXADDR,  0x23); */
 		/* as(SETUP_AW,   0x03); */
 		/* as(SETUP_RETR, 0x35); */
@@ -46,10 +46,10 @@ int main() {
 		/* as(FIFO_STATUS,0x11); */
 		/* as(RX_PW_P5,   0x10); */
 		/* as(RX_ADDR_P5, 0xff); */
-		if((systick - p_delay) > 10000){
-			NRF24_print_registers();
-			p_delay = systick;
-		}
+		/* if((systick - p_delay) > 10000){ */
+		/* 	NRF24_print_registers(); */
+		/* 	p_delay = systick; */
+		/* } */
 		/* printf("test %d %lu\n", mesh_is_connected(), systick); */
 		_delay_ms(100);
 	}

@@ -333,15 +333,22 @@ uint8_t NRF24_send_packet(uint8_t *addr, uint8_t *payload,
 	CE_lo;
 
 	if(sync || !use_ack){
+		uint8_t ret;
 		/* Spin until ack or max rt */
+		uint8_t deadlock_fix = 0;
 		do {
 			_delay_ms(1);
 			NRF24_get_status();
+			deadlock_fix++;
+			if(deadlock_fix == 0xff){
+				/* Something strange happened */
+				ret = 0;
+				break;
+			}
 		} while (!(nrf24_status & ((1<<MAX_RT)|(1<<TX_DS))));
 
 		nrf24_packetstatus = NRF24_NOT_SENT;
 
-		uint8_t ret;
 		if(nrf24_status & (1<<MAX_RT)){
 			/* No ack */
 			NRF24_set_bit(STATUS, MAX_RT);

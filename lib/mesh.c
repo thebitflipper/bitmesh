@@ -41,9 +41,15 @@ enum MESH_PACKET {
 	MESH_PACKET_PONG        = 0x05,
 	/* 1 = source addr, 2 = dest addr, 3 = current sender */
 	MESH_PACKET_CHANGE_ADDR = 0x06,
-	/* 1 = source addr, 2 = dest addr, 3 = current sender, 3 new addr */
-	MESH_PACKET_REQ_ADDR    = 0x07
+	/* 1 = source addr, 2 = dest addr, 3 = current sender, 4 new addr */
+	MESH_PACKET_REQ_ADDR    = 0x07,
 	/* 1 = source addr, 2 = dest addr, 3 = current sender */
+	MESH_PACKET_ALIVE_REQ   = 0x08,
+	/* 1 = source addr, 2 = dest addr, 3 = current sender,the rest
+	   of the bytes will be copied into the reply */
+	MESH_PACKET_ALIVE_RSP   = 0x09
+	/* 1 = source addr, 2 = dest addr, 3 = current sender, the
+	   rest of the bytes are the ones sent in the req */
 };
 
 /* These defines are used for debugging */
@@ -55,6 +61,7 @@ struct potential_parent {
 	unsigned long last_changed;
 	uint8_t parent;
 	uint8_t hopcount;
+	uint8_t connections_attempts;
 };
 
 struct mesh_state {
@@ -64,6 +71,8 @@ struct mesh_state {
 	unsigned long last_state_ms;
 	/* Last ping time */
 	unsigned long last_ping;
+	/* Last pong time (from sink) */
+	unsigned long last_pong;
 	/* Last time we asked for a new address */
 	unsigned long last_addr;
 	/* If connected to mesh or not */
@@ -92,7 +101,7 @@ uint8_t mesh_get_parent(uint8_t addr){
 
 uint8_t mesh_next_hop(uint8_t target_addr){
 	/* TODO: Make sure this does not hang */
-	D("Calculating next hop for %d\n", target_addr);
+	/* D("Calculating next hop for %d\n", target_addr); */
 	if(target_addr == MESH_ADDR_SINK){
 		/* The target is the sink, send up */
 		return mesh.parent;
@@ -110,7 +119,7 @@ uint8_t mesh_next_hop(uint8_t target_addr){
 	}
 
 	while (up != 255){
-		D("PREV %d UP %d\n", prev, up);
+		/* D("PREV %d UP %d\n", prev, up); */
 		if(up == mesh.addr){
 			return prev;
 		}
@@ -130,12 +139,12 @@ uint8_t mesh_next_hop(uint8_t target_addr){
 uint8_t mesh_send(uint8_t addr, uint8_t sync){
 	/* Calculate next hop */
 	uint8_t next_hop = mesh_next_hop(addr);
-
+	uint8_t status = 0;
 	if(next_hop != 255){
 		uint8_t addr_buffer[5] = ADDR;
 		addr_buffer[4] = next_hop;
 		D("SEND(%d, n%2d, f%2d) "fmt16"\n", mesh.addr, next_hop, addr, tx16);
-		uint8_t status = NRF24_send_packet(addr_buffer, mesh.tx_buffer, 16, 1, sync);
+		status = NRF24_send_packet(addr_buffer, mesh.tx_buffer, 16, 1, sync);
 		if(status){
 			/* We sent a message successfully to next_hop */
 			mesh.packetloss[next_hop] = 0;
@@ -150,11 +159,13 @@ uint8_t mesh_send(uint8_t addr, uint8_t sync){
 					/* We are now disconnected from the mesh */
 					mesh.state = MESH_STATE_UNCONNECTED;
 					D("UNCONNECTED!\n");
+					/* TODO: Inform children that
+					   thew are unconnected. */
 				}
 			}
 		}
 	}
-	return 0;
+	return status;
 }
 
 uint8_t mesh_send_direct(uint8_t addr, uint8_t sync){
@@ -238,7 +249,8 @@ void mesh_init(uint8_t is_sink){
 	NRF24_enable_pipe(MESH_PIPE_ADDR);
 	/* And pipe 5 for the broadcast address */
 	NRF24_enable_pipe(MESH_PIPE_BRD);
-	/* NRF24_enable_pipe(0); */
+	/* We did not get acks without this: */
+	NRF24_enable_pipe(0);
 
 	NRF24_set_channel(120);
 	NRF24_set_speed(NRF_250KBIT);
@@ -335,19 +347,40 @@ void mesh_poll(unsigned long ms){
 				D("Node %d got BRD_CONNECT from %d\n",
 				  mesh.addr,
 				  mesh.rx_buffer[1]);
-				/* Respond */
-				mesh.tx_buffer[0] = (unsigned char)MESH_PACKET_OFFER;
-				mesh.tx_buffer[1] = mesh.addr;
-				mesh.tx_buffer[2] = mesh.rx_buffer[1];
-				mesh.tx_buffer[3] = mesh.addr;
-				mesh.tx_buffer[4] = mesh.hopcount;
-				if(mesh_send_direct(mesh.rx_buffer[1], 1)){
-					D("Sent offer to %d\n", mesh.rx_buffer[1]);
+				if(mesh.rx_buffer[1] == mesh.parent &&
+				   mesh.addr != MESH_ADDR_SINK){
+					/* OMG! This broadcast connect
+					   is from our parent! We
+					   cannot reach the sink */
+					mesh.state = MESH_STATE_UNCONNECTED;
 				} else {
-					D("Failed offer to %d\n", mesh.rx_buffer[1]);
-				}
+					if(mesh.addr == MESH_ADDR_SINK){
+						mesh.tx_buffer[0] = (unsigned char)MESH_PACKET_OFFER;
+						mesh.tx_buffer[1] = mesh.addr;
+						mesh.tx_buffer[2] = mesh.rx_buffer[1];
+						mesh.tx_buffer[3] = mesh.addr;
+						mesh.tx_buffer[4] = mesh.hopcount;
+						if(mesh_send_direct(mesh.rx_buffer[1], 1)){
+							D("Sent offer to %d\n", mesh.rx_buffer[1]);
+						} else {
+							D("Failed offer to %d\n", mesh.rx_buffer[1]);
+						}
+					} else {
+						/* Check if we are connected,
+						   The response happens in the
+						   respons handle for the
+						   response of this packet. */
+						mesh.tx_buffer[0] = (unsigned char)MESH_PACKET_ALIVE_REQ;
+						mesh.tx_buffer[1] = mesh.addr;
+						mesh.tx_buffer[2] = MESH_ADDR_SINK;
+						mesh.tx_buffer[3] = mesh.addr;
+						mesh.tx_buffer[4] = mesh.rx_buffer[1];
+						mesh_send(MESH_ADDR_SINK, 1);
+					}
+
+				}}
 				break;
-			}}
+			}
 		} else {
 			uint8_t for_us = 1;
 			if(mesh.state == MESH_STATE_CONNECTED){
@@ -365,6 +398,7 @@ void mesh_poll(unsigned long ms){
 					   node to inform us of its children?
 					   But did we remove its children also
 					   from the routing table? */
+					/* TODO: Inform parent of new children. */
 				}
 
 
@@ -380,21 +414,11 @@ void mesh_poll(unsigned long ms){
 					mesh.tx_buffer[3] = mesh.addr;
 
 					/* Try sending the packet */
-					uint8_t forwarded = 0;
-					for (int i = 0; i< 10; ++i){
+					for (int i = 0; i < MESH_LOSS_THRESHOLD; ++i){
 						if(mesh_send(mesh.rx_buffer[2], 1)){
-							forwarded=1;
 							break;
 						}
 						_delay_ms(3);
-					}
-
-					if(!forwarded){
-						D("Lost connection to %d!\n", mesh_next_hop(mesh.rx_buffer[2]));
-						if(mesh.rx_buffer[2] == mesh.parent){
-							/* We lost connection to the mesh */
-							mesh.state = MESH_STATE_UNCONNECTED;
-						}
 					}
 				}
 			}
@@ -415,6 +439,7 @@ void mesh_poll(unsigned long ms){
 					mesh.pot.parent = mesh.rx_buffer[1];
 					mesh.pot.hopcount = mesh.rx_buffer[4];
 					mesh.pot.last_changed = ms;
+					mesh.pot.connections_attempts = 0;
 					mesh.state = MESH_STATE_COLLECTING_PARENTS;
 				} else if (mesh.state == MESH_STATE_COLLECTING_PARENTS){
 					/* TODO: Change this in production */
@@ -436,7 +461,7 @@ void mesh_poll(unsigned long ms){
 				  mesh.rx_buffer[1],
 				  mesh.rx_buffer[2]);
 				if(for_us){
-					D("Sending pong\n");
+					D("Sending pong to %d\n", mesh.rx_buffer[1]);
 					mesh_send_pong(mesh.rx_buffer[1]);
 				} else {
 					/* Ping not for us! */
@@ -445,7 +470,7 @@ void mesh_poll(unsigned long ms){
 				break;
 			}
 			case MESH_PACKET_PONG: {
-				/* Only accept ping when connected */
+				/* Only accept pong when connected */
 				if(mesh.state != MESH_STATE_CONNECTED) break;
 				D("Node %d got PONG from %d to %d\n",
 				  mesh.addr,
@@ -454,6 +479,11 @@ void mesh_poll(unsigned long ms){
 				if(!for_us){
 					/* Pong not for us! */
 					D("Pong not for us!\n");
+				} else {
+					if(mesh.rx_buffer[1] == MESH_ADDR_SINK){
+						/* This pong is from the sink */
+						mesh.last_pong = ms;
+					}
 				}
 				break;
 			}
@@ -481,8 +511,8 @@ void mesh_poll(unsigned long ms){
 				if (mesh.rx_buffer[2] != mesh.addr) break;
 				/* This packet is for us */
 
-				D("Our address is now %d\n", mesh.rx_buffer[3]);
-				mesh.addr = mesh.rx_buffer[3];
+				D("Our address is now %d\n", mesh.rx_buffer[4]);
+				mesh.addr = mesh.rx_buffer[4];
 				uint8_t addr[5] = ADDR;
 				addr[4] = mesh.addr;
 				NRF24_set_rx_addr(MESH_PIPE_ADDR, addr);
@@ -499,9 +529,38 @@ void mesh_poll(unsigned long ms){
 				mesh.tx_buffer[0] = MESH_PACKET_CHANGE_ADDR;
 				mesh.tx_buffer[1] = mesh.addr;
 				mesh.tx_buffer[2] = mesh.rx_buffer[1];
-				mesh.tx_buffer[3] = new_address++;
+				mesh.tx_buffer[3] = mesh.addr;
+				mesh.tx_buffer[4] = new_address++;
 
 				mesh_send(mesh.tx_buffer[2], 1);
+				break;
+			}
+			case MESH_PACKET_ALIVE_REQ: {
+				if (!for_us) break;
+				D("Alive req from %d\n", mesh.rx_buffer[1]);
+				memcpy(mesh.tx_buffer, mesh.rx_buffer, 16);
+				mesh.tx_buffer[0] = MESH_PACKET_ALIVE_RSP;
+				mesh.tx_buffer[1] = mesh.addr;
+				mesh.tx_buffer[2] = mesh.rx_buffer[1];
+				mesh.tx_buffer[3] = mesh.addr;
+				mesh_send(mesh.tx_buffer[2], 1);
+				break;
+			}
+			case MESH_PACKET_ALIVE_RSP: {
+				if (!for_us) break;
+				D("Alive RSP from %d\n", mesh.rx_buffer[1]);
+
+				mesh.tx_buffer[0] = (unsigned char)MESH_PACKET_OFFER;
+				mesh.tx_buffer[1] = mesh.addr;
+				mesh.tx_buffer[2] = mesh.rx_buffer[4];
+				mesh.tx_buffer[3] = mesh.addr;
+				mesh.tx_buffer[4] = mesh.hopcount;
+				if(mesh_send_direct(mesh.rx_buffer[4], 1)){
+					D("Sent offer to %d\n", mesh.rx_buffer[4]);
+				} else {
+					D("Failed offer to %d\n", mesh.rx_buffer[4]);
+				}
+
 				break;
 			}
 			}
@@ -569,22 +628,30 @@ void mesh_poll(unsigned long ms){
 					       mesh.pot.parent)){
 
 				D("Connected to %d!\n",mesh.parent);
-
 				if (mesh.addr == MESH_ADDR_NEW_DEVICE){
 					/* We are using the temporary new device address */
 					mesh.state = MESH_STATE_W_FOR_ADDRESS;
+					/* Ugly hack so that we will
+					   send request for new
+					   address */
+					mesh.last_addr = ms - 30000;
 				} else {
 					mesh.state = MESH_STATE_CONNECTED;
 				}
 			} else {
 				D("Failed to connect!\n");
+				mesh.pot.connections_attempts++;
 				/* TODO: Handle multiple connection failures */
+				if(mesh.pot.connections_attempts >= 3){
+					/* We failed to connect! Retry. */
+					mesh.state = MESH_STATE_UNCONNECTED;
+				}
 			}
-		} else if ((ms - mesh.last_state_ms) > 500){
-			D("Broadcast\n");
-			mesh_send_brd_connect(0);
-			mesh.last_state_ms = ms;
-		}
+		}/*  else if ((ms - mesh.last_state_ms) > 100){ */
+		/* 	D("Broadcast\n"); */
+		/* 	mesh_send_brd_connect(0); */
+		/* 	mesh.last_state_ms = ms; */
+		/* } */
 	}
 	}
 }
