@@ -80,6 +80,8 @@ enum MESH_PACKET {
 #define rx16 mesh.rx_buffer[0],mesh.rx_buffer[1],mesh.rx_buffer[2],mesh.rx_buffer[3],mesh.rx_buffer[4],mesh.rx_buffer[5],mesh.rx_buffer[6],mesh.rx_buffer[7],mesh.rx_buffer[8],mesh.rx_buffer[9],mesh.rx_buffer[10],mesh.rx_buffer[11],mesh.rx_buffer[12],mesh.rx_buffer[13],mesh.rx_buffer[14],mesh.rx_buffer[15]
 
 void mesh_route_dump();
+uint8_t mesh_is_child(uint8_t node);
+uint8_t mesh_publish_del_route(uint8_t addr, uint8_t node, uint8_t old_parent);
 
 struct potential_parent {
 	unsigned long last_changed;
@@ -128,6 +130,16 @@ uint8_t mesh_get_parent(uint8_t addr){
 	return mesh.route[addr];
 }
 
+void mesh_mark_node_taken(uint8_t node){
+	eeprom_busy_wait();
+	uint8_t a = eeprom_read_byte(MESH_NODE_FREE_ADDR+node);
+	if(rb(a,0)){
+		/* This address is not marked taken */
+		eeprom_busy_wait();
+		eeprom_update_byte(MESH_NODE_FREE_ADDR+node, cb(a, 0));
+	}
+}
+
 /* Returns 0 if failure */
 uint8_t mesh_generate_address(){
 	for(int i = 2; i < MESH_MAX_NODES; i++){
@@ -135,6 +147,7 @@ uint8_t mesh_generate_address(){
 		uint8_t a = eeprom_read_byte(MESH_NODE_FREE_ADDR+i);
 		if(rb(a,0)){
 			/* This address is not used */
+			eeprom_busy_wait();
 			eeprom_update_byte(MESH_NODE_FREE_ADDR+i, cb(a, 0));
 			return i;
 		} else {
@@ -145,10 +158,35 @@ uint8_t mesh_generate_address(){
 	return 0;
 }
 
+uint8_t mesh_route_goes_to_sink(uint8_t node){
+	while(!(node == 255 || node == MESH_ADDR_SINK)){
+	        node = mesh_get_parent(node);
+	}
+
+	if(node == MESH_ADDR_SINK){
+		return 1;
+	} else {
+		return 0;
+	}
+}
+
+uint8_t mesh_is_above(uint8_t a, uint8_t b){
+	uint8_t node = b;
+	while(!(node == 255 || node == MESH_ADDR_SINK || node == a)){
+	        node = mesh_get_parent(node);
+	}
+	if(node == a){
+		return 1;
+	} else {
+		return 0;
+	}
+}
+
 void mesh_route_update(uint8_t node, uint8_t parent){
 	if(node    < MESH_MAX_NODES &&
-	   parent  < MESH_MAX_NODES &&
-	   parent != MESH_ADDR_NEW_DEVICE){
+	   (parent  < MESH_MAX_NODES || parent == 255) &&
+	   parent != MESH_ADDR_NEW_DEVICE &&
+	   !mesh_is_above(node, parent)){
 		mesh.route[node] = parent;
 	} else {
 		/* TODO This should not happen, handle it */
@@ -157,8 +195,17 @@ void mesh_route_update(uint8_t node, uint8_t parent){
 	if(mesh.addr == MESH_ADDR_SINK){
 		mesh_route_dump();
 	}
-	/* TODO. Check that the nodes are marked taken in EEPROM */
 
+	mesh_mark_node_taken(node);
+	mesh_mark_node_taken(parent);
+
+	if(parent == 255){
+		for(int i = 0; i < MESH_MAX_NODES; i++){
+			if(!mesh_route_goes_to_sink(i)){
+				mesh.route[i] = 255;
+			}
+		}
+	}
 }
 
 uint8_t mesh_next_hop(uint8_t target_addr){
@@ -220,9 +267,13 @@ uint8_t mesh_send(uint8_t addr, uint8_t sync){
 					D("UNCONNECTED!\n");
 					/* TODO: Inform children that
 					   thew are unconnected. */
+				} else if (mesh_is_child(next_hop)){
+					mesh_publish_del_route(mesh.parent, next_hop, mesh.addr);
 				}
 			}
 		}
+	} else if(next_hop == 255 && mesh.addr != MESH_ADDR_SINK){
+		mesh.state = MESH_STATE_UNCONNECTED;
 	}
 	return status;
 }
@@ -372,7 +423,7 @@ void mesh_route_dump(){
 		eeprom_busy_wait();
 		printf("-R %d %d %02hhx\n",
 		       i,	/* Node */
-		       mesh.route[i], /* Parent */
+		       mesh_get_parent(i), /* Parent */
 		       eeprom_read_byte(MESH_NODE_FREE_ADDR+i)); /* Static node info */
 	}
 	/* Easier to parse the routeing table with this -- */
@@ -396,9 +447,9 @@ void mesh_inform_child_hopcount(uint8_t child){
 void mesh_inform_children_hopcount(){
 	/* Iterate over all the nodes */
 	for(int i = 0; i<MESH_MAX_NODES; i++){
-		if(mesh.route[i] == mesh.addr){
+		if(mesh_get_parent(i) == mesh.addr){
 			/* We are the node i's parent */
-			mesh_inform_child_hopcount(mesh.route[i]);
+			mesh_inform_child_hopcount(mesh_get_parent(i));
 		}
 	}
 }
@@ -407,7 +458,7 @@ uint8_t mesh_accept_more_children(){
 	/* Count direct children */
 	uint8_t c = 0;
 	for(int i = 0; i<MESH_MAX_NODES; i++){
-		if(mesh.route[i] == mesh.addr){
+		if(mesh_get_parent(i) == mesh.addr){
 			c++;
 		}
 	}
@@ -420,7 +471,7 @@ uint8_t mesh_accept_more_children(){
 }
 
 uint8_t mesh_is_child(uint8_t node){
-	if(mesh.route[node] == mesh.addr){
+	if(mesh_get_parent(node) == mesh.addr){
 		return 1;
 	} else {
 		return 0;
@@ -538,7 +589,7 @@ void mesh_poll(unsigned long ms){
 					   node to inform us of its children?
 					   But did we remove its children also
 					   from the routing table? */
-					/* TODO: Inform parent of new children. */
+					mesh_publish_route(mesh.parent, mesh.rx_buffer[3], mesh.addr);
 				}
 
 
@@ -659,7 +710,7 @@ void mesh_poll(unsigned long ms){
 				   packets? */
 				if(mesh.addr != mesh.rx_buffer[2]) break;
 
-				if(mesh.route[mesh.rx_buffer[4]] == mesh.rx_buffer[5]){
+				if(mesh_get_parent(mesh.rx_buffer[4]) == mesh.rx_buffer[5]){
 					/* Remove node from routing table */
 					mesh_route_update(mesh.rx_buffer[4], 255);
 					D("Node %d has disappeared\n", mesh.rx_buffer[4]);
