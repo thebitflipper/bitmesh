@@ -1,0 +1,74 @@
+digraph graph_name {
+        graph [
+    charset = "UTF-8";
+    label = "bitmesh",
+    // labelloc = "t",
+    // labeljust = "c",
+    // bgcolor = "#343434",
+    // fontcolor = white,
+    fontsize = 20,
+    fontname = "Migu 1M",
+    // style = "filled",
+    // rankdir = LR,
+    // margin = 1,
+    // splines = spline,
+    // ranksep = 1.0,
+    // nodesep = 0.9
+  ];
+
+  node [
+    // colorscheme = "rdylgn11"
+    style = "solid,filled",
+    fontsize = 11,
+    // fontcolor = 6,
+    fontname = "Migu 1M",
+    // color = 7,
+    // fillcolor = 11,
+    // fixedsize = true,
+    // height = 0.6,
+    // width = 1.2
+  ];
+
+  edge [
+    style = solid,
+    fontsize = 10,
+    // fontcolor = white,
+    fontname = "Migu 1M",
+    // color = white,
+    // labelfloat = true,
+    // labeldistance = 2.5,
+    // labelangle = 70
+  ];
+
+  // node define
+  MESH_STATE_UNCONNECTED;
+  MESH_STATE_BRD_SENT;
+  MESH_STATE_CONNECTED;
+  MESH_STATE_W_FOR_ADDRESS;
+  MESH_STATE_COLLECTING_PARENTS;
+
+
+  ACCEPT_PARENT [label="Accepting parent"];
+  HAVE_ADDRESS [label="Have address?", shape=box]
+  FOR_US        [label="For us?", shape=box]
+  FORWARD_PACKET [label="Forward packet"]
+  PROCESS_PACKET [label="Process packet"]
+
+
+  // edge define
+  MESH_STATE_UNCONNECTED -> MESH_STATE_BRD_SENT;
+  MESH_STATE_BRD_SENT -> MESH_STATE_BRD_SENT [label="No response"];
+  MESH_STATE_BRD_SENT -> MESH_STATE_COLLECTING_PARENTS [label="One response"];
+  MESH_STATE_COLLECTING_PARENTS -> ACCEPT_PARENT;
+  ACCEPT_PARENT -> MESH_STATE_UNCONNECTED;
+  ACCEPT_PARENT -> HAVE_ADDRESS;
+  HAVE_ADDRESS -> MESH_STATE_CONNECTED [label=" yes"];
+  HAVE_ADDRESS -> MESH_STATE_W_FOR_ADDRESS [label=" no"];
+  MESH_STATE_W_FOR_ADDRESS -> MESH_STATE_CONNECTED [label=" Got new address"]
+  MESH_STATE_CONNECTED -> GOT_PACKET
+  GOT_PACKET -> FOR_US
+  FOR_US -> FORWARD_PACKET [label=" no"]
+  FOR_US -> PROCESS_PACKET [label=" yes"]
+
+
+}

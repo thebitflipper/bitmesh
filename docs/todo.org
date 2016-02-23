@@ -1,0 +1,38 @@
+* Things to implement
+** DONE Make addresses permanent
+   Write them to eeprom on MESH_PACKET_CHANGE_ADDR
+** DONE Research how to erase eeprom
+   -e from avrdude performs a chip erase
+** TODO Handle more than one nodes with address 0
+   If a node with address 0 sees a braodcast from address 0, wait for
+   a while.
+** TODO Some sort of broadcast "who can we see".
+   So that we can query the nodes for possible connections. Mayby with
+   a counter so we can detect lost packets.
+** TODO A packetloss counter.
+   Maybe we want to connect to another node if the current parent is
+   shitty.
+** DONE Update hopcount.
+   If a node decides to change parent we must update its childrens
+   hopcount.
+** DONE Limit the number of children.
+   So that more interesting trees can be formed when testing.
+** TODO Add support for battery powered nodes.
+   Make sure parents of battery powered nodes know that their children
+   can sleep and not answer. We may need some additions in the routing
+   table. Perhaps dedicate some bits to indicate a battery powered
+   node.
+** DONE Abstact away all access to mesh.route
+   - New routes should check eeprom to make sure that addresses are
+     marked taken.
+** DONE Make the sink remeber all addresses.
+   So that the sink can give out new addresses to new nodes. Also
+   implement some sort of feature to "unallocate" nodes.
+** TODO Handle packets to sink from unroutable nodes.
+   We must ask the child we got the packet from for the parent of the
+   unroutable node.
+** TODO Visualize possible connections
+** TODO Sink must alert old parents of nodes.
+   So that the parents of nodes that moved removes their route.
+** DONE Inform parent if child goes away.
+   So that the sink knows of dissapering nodes
