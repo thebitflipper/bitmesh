@@ -26,8 +26,10 @@ int main() {
 	systick_init();
 	mesh_init(0);
 	printf("INIT!\n");
+
 	/* unsigned long p_delay = systick; */
 	for(;;){
+
 		mesh_poll(systick);
 
 		/* as(CONFIG,     0x0B); */
@@ -46,7 +48,8 @@ int main() {
 		/* 	p_delay = systick; */
 		/* } */
 
-		_delay_ms(100);
+		_delay_ms(20);
+
 	}
 	return 0;
 }

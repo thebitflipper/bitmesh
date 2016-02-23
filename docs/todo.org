@@ -28,7 +28,7 @@
 ** DONE Make the sink remeber all addresses.
    So that the sink can give out new addresses to new nodes. Also
    implement some sort of feature to "unallocate" nodes.
-** TODO Handle packets to sink from unroutable nodes.
+** DONE Handle packets to sink from unroutable nodes.
    We must ask the child we got the packet from for the parent of the
    unroutable node.
 ** TODO Visualize possible connections
