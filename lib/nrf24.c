@@ -288,7 +288,7 @@ void NRF24_set_tx_addr(uint8_t *addr){
 
 uint8_t NRF24_send_packet(uint8_t *addr, uint8_t *payload,
 			  uint8_t pl_length, uint8_t use_ack,
-			  uint8_t sync){
+			  uint8_t sync, uint8_t *retransmits){
 	/* uint8_t aw = NRF24_get_register(SETUP_AW); */
 	if(nrf24_status & (1 << TX_FULL) || nrf24_waiting_for_ack){
 		if(nrf24_waiting_for_ack){
@@ -361,6 +361,10 @@ uint8_t NRF24_send_packet(uint8_t *addr, uint8_t *payload,
 		NRF24_flush_tx();
 		/* Go back directly to rx mode */
 		NRF24_set_bit(CONFIG, PRIM_RX);
+
+		if(retransmits != NULL){
+			*retransmits = NRF24_get_register(OBSERVE_TX) & 0x0f;
+		}
 
 		return ret;
 

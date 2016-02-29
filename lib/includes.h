@@ -20,7 +20,7 @@
 #define CE	 PB1
 #define CSN	 PB2
 
-/* #define DEBUG */
+#define DEBUG
 
 #ifdef DEBUG
 #define D(A,...) printf_P(PSTR("D(%02d) %15s(%3d) " A), mesh.addr, __FILE__, __LINE__, ##__VA_ARGS__);

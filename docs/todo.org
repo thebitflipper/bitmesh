@@ -36,3 +36,11 @@
    So that the parents of nodes that moved removes their route.
 ** DONE Inform parent if child goes away.
    So that the sink knows of dissapering nodes
+** TODO Remove alive check for faster reconnects
+   When a node(A) sees a packet from its parent that was forwarded
+   through a child the parent node has reconnected and formed a route
+   loop. Node A can then send broadcast with a check flag set so that
+   any nodes that receive the broadcast must first check that they are
+   connected to the sink. To reduce the amount of sink alive checks we
+   can send broadcasts indicating that we are unconnected but do not
+   want a reply, so that children can act and do the same thing.
