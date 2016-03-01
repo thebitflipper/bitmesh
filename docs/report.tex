@@ -1,0 +1,19 @@
+Introduction
+The main goal of this project was to design a protocol to network a lot of microcontroller using cheap nrf24l01+ modules.
+We decided to develop a self organizing spanning tree mesh network using a pre-defined mcu to be sink. 
+The sink was connected to a pc which made the mesh network available though a web socket.
+The result is the possibility to make large, cheap long-range networks which are accessable though the internet. 
+Possible use-cases include remote monitoring and  home automation. 
+
+Design decisions
+The radiomodules support automatic acknoledgement of packets with optional retransmissions. This enabled us to easily make the communication between two modules reliable. The auto acknoledgement feature was used in all communication except for new nodes broadcasting to connect to the network.
+
+The radio modules uses GFSK in the 2.4-2.5125Ghz range with support of datarates from 250Kbps up to a maximum of 2Mbps. The modules uses 1Mhz of bandwidth per channel and support 125 different channels. We decided to use the same frequency for all nodes in the same network to decrease complexity. This makes all communication within the network interfere. 
+The radiomodules has internal addressing with addresses consisting of 3-5 bytes. Each module can listen for up to six adresses at the same time but five of these adresses need to share the first four bytes of address. We decided to let the mcu save the addresses and routing table and only use two of the addresses in the radio modules. One for broadcast messages and one for unicast messages directed towards the node. 
+
+We studied different routing protocols for making a mesh-network, initally we wanted to have a complete mesh network without a sink but due to the limited amout of memory on the mcu we decided to go for a spanning tree network instead. We figured that this would make the routing table use less memory.
+
+Each node keeps a routing table of all nodes in the network and it's corresponding parent node. The sink is the highest parent. This approach uses memory scaling linearly with the amout of nodes in the network. 
+
+Hardware:
+Each node consists of one atmega328p mcu running from the internal oscillator at 8Mhz. It's connected to a nrf24l01+ through the SPI port. The mcu can be connected to a rs232 adapter to enable debugging messages to a computer. 
