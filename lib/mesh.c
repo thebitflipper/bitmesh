@@ -27,7 +27,7 @@
 #define MESH_MAX_NODES 32
 #define MESH_MAX_CHILDREN 2
 
-#define MESH_LOSS_THRESHOLD 3
+#define MESH_LOSS_THRESHOLD 5
 
 enum MESH_STATE{
 	MESH_STATE_UNCONNECTED,
@@ -53,7 +53,8 @@ enum MESH_PACKET {
 	/* 1 = source addr, 2 = dest addr, 3 = current sender,
 	   4 = hopcount(source), */
 	MESH_PACKET_PING        = 0x04,
-	/* 1 = source addr, 2 = dest addr, 3 = current sender */
+	/* 1 = source addr, 2 = dest addr, 3 = current sender,4 parent
+	   link quality */
 	MESH_PACKET_PONG        = 0x05,
 	/* 1 = source addr, 2 = dest addr, 3 = current sender */
 	MESH_PACKET_CHANGE_ADDR = 0x06,
@@ -69,9 +70,11 @@ enum MESH_PACKET {
 	MESH_PACKET_NEW_HOPCOUNT= 0x0A,
 	/* 1 = source addr, 2 = dest addr, 3 = current sender, 4 the
 	   hopcount of the source node */
-	MESH_PACKET_NOP         = 0x0B
+	MESH_PACKET_NOP         = 0x0B,
 	/* 1 = source addr, 2 = dest addr, 3 = current sender, this
 	   packet does nothing on the dest node */
+	MESH_PACKET_ROUTE_FIND  = 0x0C
+	/* 1 = source addr, 2 = dest addr, 3 = current sender */
 };
 
 /* These defines are used for debugging */
@@ -82,24 +85,25 @@ enum MESH_PACKET {
 void mesh_route_dump();
 uint8_t mesh_is_child(uint8_t node);
 uint8_t mesh_publish_del_route(uint8_t addr, uint8_t node, uint8_t old_parent);
+uint8_t mesh_send(uint8_t addr, uint8_t sync, uint8_t next_h);
 
 struct potential_parent {
-	unsigned long last_changed;
+	uint32_t last_changed;
 	uint8_t parent;
 	uint8_t hopcount;
 };
 
 struct mesh_state {
 	/* Last time mesh poll ran */
-	unsigned long last_ms;
+	uint32_t last_ms;
 	/* Last time we changed connection state */
-	unsigned long last_state_ms;
+	uint32_t last_state_ms;
 	/* Last ping time */
-	unsigned long last_ping;
+	uint32_t last_ping;
 	/* Last pong time (from sink) */
-	unsigned long last_pong;
+	uint32_t last_pong;
 	/* Last time we asked for a new address */
-	unsigned long last_addr;
+	uint32_t last_addr;
 	/* If connected to mesh or not */
 	enum MESH_STATE state;
 	uint8_t tx_buffer[16];
@@ -112,9 +116,12 @@ struct mesh_state {
 	uint8_t parent;
 	/* Routing table */
 	uint8_t route[MESH_MAX_NODES];
-	uint8_t packetloss[MESH_MAX_NODES];
+	/* uint8_t packetloss[MESH_MAX_NODES]; */
 	/* We store the potential parents in this struct */
 	struct potential_parent pot;
+
+	uint32_t packets_sent;
+	uint32_t retransmits;
 };
 
 uint8_t *mesh_eeprom_addr      = (uint8_t*)0x00;
@@ -140,6 +147,22 @@ void mesh_mark_node_taken(uint8_t node){
 	}
 }
 
+void mesh_scramble_tx_buffer(){
+	static uint16_t seed;
+	for(int i = 1; i < 16; i++){
+		seed = (seed * 165 + 10133);
+		mesh.tx_buffer[i] = (seed >> 8);
+	}
+}
+
+void mesh_route_ask(uint8_t node, uint8_t through){
+	mesh.tx_buffer[0] = MESH_PACKET_ROUTE_FIND;
+	mesh.tx_buffer[1] = mesh.addr;
+	mesh.tx_buffer[2] = node;
+	mesh.tx_buffer[3] = mesh.addr;
+	mesh_send(node, 1, through);
+}
+
 /* Returns 0 if failure */
 uint8_t mesh_generate_address(){
 	for(int i = 2; i < MESH_MAX_NODES; i++){
@@ -158,12 +181,14 @@ uint8_t mesh_generate_address(){
 	return 0;
 }
 
-uint8_t mesh_route_goes_to_sink(uint8_t node){
-	while(!(node == 255 || node == MESH_ADDR_SINK)){
+uint8_t mesh_route_goes_to_sink_or_us(uint8_t node){
+	while(!(node == 255 || node == MESH_ADDR_SINK || node == mesh.addr)){
 	        node = mesh_get_parent(node);
 	}
 
 	if(node == MESH_ADDR_SINK){
+		return 1;
+	} else if(node == mesh.addr){
 		return 1;
 	} else {
 		return 0;
@@ -201,7 +226,7 @@ void mesh_route_update(uint8_t node, uint8_t parent){
 
 	if(parent == 255){
 		for(int i = 0; i < MESH_MAX_NODES; i++){
-			if(!mesh_route_goes_to_sink(i)){
+			if(!mesh_route_goes_to_sink_or_us(i)){
 				mesh.route[i] = 255;
 			}
 		}
@@ -242,37 +267,69 @@ uint8_t mesh_next_hop(uint8_t target_addr){
 	}
 }
 
-uint8_t mesh_send(uint8_t addr, uint8_t sync){
+uint8_t mesh_send(uint8_t addr, uint8_t sync, uint8_t next_hop){
 	/* Calculate next hop */
-	uint8_t next_hop = mesh_next_hop(addr);
+	if(next_hop == 255){
+		next_hop = mesh_next_hop(addr);
+	}
 	uint8_t status = 0;
 	if(next_hop != 255){
 		uint8_t addr_buffer[5] = ADDR;
+		uint8_t tries = 0;
+		uint8_t retransmits = 0;
 		addr_buffer[4] = next_hop;
+
+		if(mesh.packets_sent > 30){
+			mesh.retransmits >>= 1;
+			mesh.packets_sent >>= 1;
+		}
+
 		D("SEND(%d, n%2d, f%2d) "fmt16"\n", mesh.addr, next_hop, addr, tx16);
-		status = NRF24_send_packet(addr_buffer, mesh.tx_buffer, 16, 1, sync);
-		if(status){
-			/* We sent a message successfully to next_hop */
-			mesh.packetloss[next_hop] = 0;
-		} else {
-			D("PACKETLOSS!\n");
-			if(mesh.packetloss[next_hop] < 255){
-				mesh.packetloss[next_hop]++;
+		/* Try to send the packet */
+		do {
+			status = NRF24_send_packet(addr_buffer, mesh.tx_buffer, 16, 1, sync, &retransmits);
+			if(next_hop == mesh.parent){
+				mesh.retransmits += retransmits + 1;
 			}
-			if(mesh.packetloss[next_hop] >= MESH_LOSS_THRESHOLD){
-				/* We lost connection to the node next_hop */
-				if(next_hop == mesh.parent && mesh.addr != MESH_ADDR_SINK){
-					/* We are now disconnected from the mesh */
-					mesh.state = MESH_STATE_UNCONNECTED;
-					D("UNCONNECTED!\n");
-					/* TODO: Inform children that
-					   thew are unconnected. */
-				} else if (mesh_is_child(next_hop)){
-					mesh_publish_del_route(mesh.parent, next_hop, mesh.addr);
+			tries++;
+			if(!status){
+				/* If we failed to send, delay for 4*tries ms */
+				for(int i = 0; i < tries; i++){
+					_delay_ms(4);
 				}
 			}
+		} while (!status && tries < MESH_LOSS_THRESHOLD);
+
+		if(status){
+			if(next_hop == mesh.parent){
+				mesh.packets_sent++;
+			}
+
+			/* We sent a message successfully to next_hop */
+			/* mesh.packetloss[next_hop] = 0; */
+		} else {
+			/* We lost connection to the node */
+			D("PACKETLOSS!\n");
+			/* if(mesh.packetloss[next_hop] < 255){ */
+			/* 	mesh.packetloss[next_hop]++; */
+			/* } */
+			/* if(mesh.packetloss[next_hop] >= MESH_LOSS_THRESHOLD){ */
+			/* 	/\* We lost connection to the node next_hop *\/ */
+			if(next_hop == mesh.parent && mesh.addr != MESH_ADDR_SINK){
+				/* We are now disconnected from the mesh */
+				mesh.state = MESH_STATE_UNCONNECTED;
+				D("UNCONNECTED!\n");
+				/* TODO: Inform children that
+				   thew are unconnected. */
+			} else if (mesh_is_child(next_hop)){
+				mesh_route_update(next_hop, 255);
+				mesh_publish_del_route(mesh.parent, next_hop, mesh.addr);
+			}
+			/* } */
 		}
 	} else if(next_hop == 255 && mesh.addr != MESH_ADDR_SINK){
+		/* We are not the sink and we do not know where to
+		   send packets. Something is wrong! */
 		mesh.state = MESH_STATE_UNCONNECTED;
 	}
 	return status;
@@ -284,10 +341,11 @@ uint8_t mesh_send_direct(uint8_t addr, uint8_t sync){
 	uint8_t addr_buffer[5] = ADDR;
 	addr_buffer[4] = addr;
 	D("DEND(n%2d, f%2d) "fmt16"\n", addr, addr, tx16);
-	return NRF24_send_packet(addr_buffer, mesh.tx_buffer, 16, 1, sync);
+	return NRF24_send_packet(addr_buffer, mesh.tx_buffer, 16, 1, sync, NULL);
 }
 
 void mesh_send_ping(uint8_t addr){
+	mesh_scramble_tx_buffer();
 	mesh.tx_buffer[0] = (unsigned char)MESH_PACKET_PING;
 	/* From */
 	mesh.tx_buffer[1] = mesh.addr;
@@ -296,10 +354,18 @@ void mesh_send_ping(uint8_t addr){
 	/* This node */
 	mesh.tx_buffer[3] = mesh.addr;
 
-	mesh_send(addr, 1);
+	if(mesh.packets_sent > 0){
+		mesh.tx_buffer[4] = (uint8_t)((mesh.retransmits * 10) / mesh.packets_sent);
+		/* D("%ld %ld %hhx\n", mesh.packets_sent, mesh.retransmits, mesh.tx_buffer[4]); */
+	} else {
+		mesh.tx_buffer[4] = 10;
+	}
+
+	mesh_send(addr, 1, 255);
 }
 
 void mesh_send_pong(uint8_t addr){
+	mesh_scramble_tx_buffer();
 	mesh.tx_buffer[0] = (unsigned char)MESH_PACKET_PONG;
 	/* From */
 	mesh.tx_buffer[1] = mesh.addr;
@@ -308,7 +374,7 @@ void mesh_send_pong(uint8_t addr){
 	/* This node */
 	mesh.tx_buffer[3] = mesh.addr;
 
-	mesh_send(addr, 1);
+	mesh_send(addr, 1, 255);
 }
 
 uint8_t mesh_publish_route(uint8_t addr, uint8_t node, uint8_t new_parent){
@@ -321,7 +387,7 @@ uint8_t mesh_publish_route(uint8_t addr, uint8_t node, uint8_t new_parent){
 	mesh.tx_buffer[4] = node;
 	mesh.tx_buffer[5] = new_parent;
 
-	return mesh_send(addr,1);
+	return mesh_send(addr,1, 255);
 }
 
 uint8_t mesh_publish_del_route(uint8_t addr, uint8_t node, uint8_t old_parent){
@@ -334,7 +400,7 @@ uint8_t mesh_publish_del_route(uint8_t addr, uint8_t node, uint8_t old_parent){
 	mesh.tx_buffer[4] = node;
 	mesh.tx_buffer[5] = old_parent;
 
-	return mesh_send(addr,1);
+	return mesh_send(addr,1, 255);
 }
 
 
@@ -343,24 +409,26 @@ void mesh_send_brd_connect(uint8_t change_state){
 	mesh.tx_buffer[1] = mesh.addr;
 	uint8_t addr[5] = ADDR;
 	addr[4] = MESH_ADDR_BROADCAST;
-	NRF24_send_packet(addr, mesh.tx_buffer, 16, 0, 0);
+	NRF24_send_packet(addr, mesh.tx_buffer, 16, 0, 0, NULL);
 	if(change_state){
 		mesh.state = MESH_STATE_BRD_SENT;
 	}
 }
 
 void mesh_init(uint8_t is_sink){
-
+	_delay_ms(100);
 	mesh.last_ms = 0;
 	mesh.last_addr = 0;
 	mesh.last_state_ms = 0;
 	mesh.state = MESH_STATE_UNCONNECTED;
 	mesh.hopcount = 255;
 	mesh.parent = 0;
+	mesh.packets_sent = 0;
+	mesh.retransmits = 0;
 
 	for (int i = 0; i < MESH_MAX_NODES; i++){
 		mesh.route[i] = 255;
-		mesh.packetloss[i] = 0;
+		/* mesh.packetloss[i] = 0; */
 	}
 
 	NRF24_init(0, 1);
@@ -408,6 +476,9 @@ void mesh_init(uint8_t is_sink){
 	} else {
 		mesh_send_brd_connect(1);
 	}
+
+	/* TEMP */
+	DDRB |= (1 << PB0);
 }
 
 uint8_t mesh_is_connected(){
@@ -436,12 +507,7 @@ void mesh_inform_child_hopcount(uint8_t child){
 	mesh.tx_buffer[2] = child;
 	mesh.tx_buffer[3] = mesh.addr;
 	mesh.tx_buffer[4] = mesh.hopcount;
-	uint8_t sent = 0;
-	uint8_t c = 0;
-	do {
-		sent = mesh_send(mesh.tx_buffer[2], 1);
-		c++;
-	} while(!sent && c < 3);
+	mesh_send(mesh.tx_buffer[2], 1, 255);
 }
 
 void mesh_inform_children_hopcount(){
@@ -478,7 +544,7 @@ uint8_t mesh_is_child(uint8_t node){
 	}
 }
 
-void mesh_poll(unsigned long ms){
+void mesh_poll(uint32_t ms){
 	/* D("POLL\n"); */
 	/* uint8_t a[5]; */
 	/* uint8_t r = NRF24_get_register(0x07); */
@@ -564,7 +630,7 @@ void mesh_poll(unsigned long ms){
 						mesh.tx_buffer[2] = MESH_ADDR_SINK;
 						mesh.tx_buffer[3] = mesh.addr;
 						mesh.tx_buffer[4] = mesh.rx_buffer[1];
-						mesh_send(MESH_ADDR_SINK, 1);
+						mesh_send(MESH_ADDR_SINK, 1, 255);
 					}
 
 				}}
@@ -575,8 +641,13 @@ void mesh_poll(unsigned long ms){
 			if(mesh.state == MESH_STATE_CONNECTED){
 				if (mesh.rx_buffer[3] == mesh.parent){
 					/* Packet is sent from parent */
-				} else if (mesh_get_parent(mesh.rx_buffer[3]) == mesh.addr){
+				} else if (mesh_is_child(mesh.rx_buffer[3])){
 					/* Message is sent from a direct child */
+					/* TODO Make sure we can send packets back */
+					if(!mesh_is_above(mesh.addr, mesh.rx_buffer[1])){
+						/* We cannot route packets to this child */
+						mesh_route_ask(mesh.rx_buffer[1], mesh.rx_buffer[3]);
+					}
 				} else {
 					/* Sender is not parent or direct
 					   child. Perhaps we lost connection
@@ -590,6 +661,9 @@ void mesh_poll(unsigned long ms){
 					   But did we remove its children also
 					   from the routing table? */
 					mesh_publish_route(mesh.parent, mesh.rx_buffer[3], mesh.addr);
+					if(mesh.addr == MESH_ADDR_SINK){
+						mesh_route_dump();
+					}
 				}
 
 
@@ -605,12 +679,7 @@ void mesh_poll(unsigned long ms){
 					mesh.tx_buffer[3] = mesh.addr;
 
 					/* Try sending the packet */
-					for (int i = 0; i < MESH_LOSS_THRESHOLD; ++i){
-						if(mesh_send(mesh.rx_buffer[2], 1)){
-							break;
-						}
-						_delay_ms(3);
-					}
+					mesh_send(mesh.rx_buffer[2], 1, 255);
 				}
 			}
 
@@ -652,7 +721,7 @@ void mesh_poll(unsigned long ms){
 				  mesh.rx_buffer[2]);
 				if(mesh.addr == MESH_ADDR_SINK){
 					/* Easy to parse */
-					printf("-P %d\n", mesh.rx_buffer[1]);
+					printf("-P %d %d\n", mesh.rx_buffer[1], mesh.rx_buffer[4]);
 				}
 
 				if(for_us){
@@ -675,6 +744,8 @@ void mesh_poll(unsigned long ms){
 					/* Pong not for us! */
 					D("Pong not for us!\n");
 				} else {
+					/* TEMP */
+					PORTB &= ~(1 << PB0);
 					if(mesh.rx_buffer[1] == MESH_ADDR_SINK){
 						/* This pong is from the sink */
 						mesh.last_pong = ms;
@@ -756,7 +827,7 @@ void mesh_poll(unsigned long ms){
 					mesh.tx_buffer[3] = mesh.addr;
 					mesh.tx_buffer[4] = new_address;
 
-					mesh_send(mesh.tx_buffer[2], 1);
+					mesh_send(mesh.tx_buffer[2], 1, 255);
 				}
 				break;
 			}
@@ -768,7 +839,7 @@ void mesh_poll(unsigned long ms){
 				mesh.tx_buffer[1] = mesh.addr;
 				mesh.tx_buffer[2] = mesh.rx_buffer[1];
 				mesh.tx_buffer[3] = mesh.addr;
-				mesh_send(mesh.tx_buffer[2], 1);
+				mesh_send(mesh.tx_buffer[2], 1, 255);
 				break;
 			}
 			case MESH_PACKET_ALIVE_RSP: {
@@ -803,10 +874,16 @@ void mesh_poll(unsigned long ms){
 				break;
 			}
 
+			case MESH_PACKET_ROUTE_FIND: {
+				if (!for_us) break;
+				D("Node %d cannot find us\n", mesh.rx_buffer[1]);
+				mesh_publish_route(mesh.parent, mesh.addr, mesh.parent);
+				break;
+			}
 			}
 		}
 	}
-	unsigned long state_ms_diff = (ms - mesh.last_state_ms);
+	uint32_t state_ms_diff = (ms - mesh.last_state_ms);
 	switch (mesh.state) {
 	case MESH_STATE_BRD_SENT: {
 		if(state_ms_diff > 500){
@@ -819,8 +896,12 @@ void mesh_poll(unsigned long ms){
 	}
 	case MESH_STATE_CONNECTED: {
 		if(mesh.addr != MESH_ADDR_SINK &&
-		   (ms - mesh.last_ping) > 5000){
+		   (ms - mesh.last_ping) > 500){
 			D("Send Ping\n");
+			/* TEMP */
+			PORTB &= ~(1 << PB0);
+			_delay_ms(50);
+			PORTB |= (1 << PB0);
 			mesh_send_ping(MESH_ADDR_SINK);
 			mesh.last_ping = ms;
 		}
@@ -839,7 +920,7 @@ void mesh_poll(unsigned long ms){
 			mesh.tx_buffer[1] = mesh.addr;
 			mesh.tx_buffer[2] = MESH_ADDR_SINK;
 			mesh.tx_buffer[3] = mesh.addr;
-			if(mesh_send(MESH_ADDR_SINK, 1)){
+			if(mesh_send(MESH_ADDR_SINK, 1, 255)){
 				/* Packet is away! */
 				D("Send request for new address!\n");
 				mesh.last_addr = ms;
@@ -865,7 +946,8 @@ void mesh_poll(unsigned long ms){
 			if (mesh_publish_route(mesh.pot.parent,
 					       mesh.addr,
 					       mesh.pot.parent)){
-
+				mesh.retransmits = 0;
+				mesh.packets_sent = 0;
 				D("Connected to %d!\n",mesh.parent);
 				if (mesh.addr == MESH_ADDR_NEW_DEVICE){
 					/* We are using the temporary new device address */

@@ -51,7 +51,7 @@ int main() {
 		/* 	p_delay = systick; */
 		/* } */
 		/* printf("test %d %lu\n", mesh_is_connected(), systick); */
-		_delay_ms(100);
+		_delay_ms(5);
 	}
 	return 0;
 }
