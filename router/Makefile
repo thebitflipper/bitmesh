@@ -2,7 +2,7 @@
 LIB = ../lib/nrf24.c ../lib/spi.c ../lib/uart.c ../lib/mesh.c ../lib/systick.c
 MCU=atmega328p
 LDFLAGS=-gc-sections,--print-gc-sections
-CFLAGS=-Os -ffunction-sections -Wall -Werror
+CFLAGS=-Os -ffunction-sections -Wall -Werror -std=c99
 OBJECTS=$(patsubst %.c,%.o,$(LIB))
 upload: sink.upload
 
