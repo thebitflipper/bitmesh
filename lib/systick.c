@@ -2,6 +2,8 @@
 #include "includes.h"
 #include <avr/interrupt.h>
 
+volatile unsigned long systick;
+
 ISR(TIMER1_COMPA_vect) {			//tmr1 CTC / systick tmr
 	systick++;
 }

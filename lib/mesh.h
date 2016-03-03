@@ -11,8 +11,8 @@ void mesh_init(uint8_t is_sink);
 uint8_t mesh_is_connected();
 
 /* Call this functionality regularly. This function handles all the
-   routing and such things. Pass time in ms to the function. */
-void mesh_poll(unsigned long ms);
+   routing and such things. */
+void mesh_poll();
 
 /* Send data (14 bytes) to address. */
 /* uint8_t mesh_send_data(uint8_t address, uint8_t *data); */
