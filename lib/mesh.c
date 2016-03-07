@@ -664,7 +664,7 @@ void mesh_poll(){
 					/* OMG! This broadcast connect
 					   is from our parent! We
 					   cannot reach the sink */
-                                        if (RX_TO == 1) {
+                                        if (RX_TO == 1 && mesh.rx_buffer[2] == 1) {
                                                 mesh.state = MESH_STATE_UNCONNECTED;
                                         }
 				} else if(mesh_accept_more_children() || mesh_is_child(RX_FROM)){

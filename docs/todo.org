@@ -44,3 +44,5 @@
    connected to the sink. To reduce the amount of sink alive checks we
    can send broadcasts indicating that we are unconnected but do not
    want a reply, so that children can act and do the same thing.
+** TODO Fix error on startup
+Make sure that the radio module is alive before init
