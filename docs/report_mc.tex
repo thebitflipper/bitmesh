@@ -3,7 +3,8 @@
 \usepackage[british]{babel}
 \usepackage{graphicx}
 
-\usepackage{hyperref}  % should always be the last package
+\usepackage{hyperref}
+\bibliographystyle{ieeetran}
 
 \title{\textbf{Microcontroller Programming (course 1TE663) \\
     Uppsala University -- Spring 2016 \\
@@ -89,6 +90,7 @@ input voltage to the radiomodule below 3.6v.
 
 
 \subsection{Software}
+
 The software on the mcu acts as a big statemachine shwon in figure 1.
 
 At startup the mcu is in the unconnected stated. In this state the
@@ -118,6 +120,7 @@ itself or if it should re-send it.
 \includegraphics[width=1\textwidth]{states}
 
 
+
 \subsection{Tests}
 We measured the current of a non sink node to 13mA at 3.3v. The
 currnet measurement was made from the output of a 3.3v regulator. 
@@ -144,4 +147,13 @@ enviroment @ 2.52GHz.
 \begin{center}
 \includegraphics[width=.5\textwidth]{map}
 \end{center}
+
+\cite{label}
+
+\begin{thebibliography}{2}
+
+\bibitem{label}
+  Person/Företag. "\emph{Titel}". sida [Online]. Available: \url{https://...} [Accessed: Dec. 07, 2015]
+
+\end{thebibliography}
 \end{document}
