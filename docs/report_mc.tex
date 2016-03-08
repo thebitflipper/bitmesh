@@ -90,8 +90,7 @@ input voltage to the radiomodule below 3.6v.
 
 
 \subsection{Software}
-
-The software on the mcu acts as a big statemachine shwon in figure 1.
+The software on the mcu acts as a big statemachine shown in Figure \ref{fig:state}.
 
 At startup the mcu is in the unconnected stated. In this state the
 node is completely unconnected the network. If a node want's to join a
@@ -117,24 +116,28 @@ is in receive mode and will listen to the channel constantly. When
 it receives a packet it will check if the packet was meant for
 itself or if it should re-send it.
 
-\includegraphics[width=1\textwidth]{states}
 
-
+\begin{figure}[h!]
+  \includegraphics[width=\linewidth]{states}
+  \caption{State Diagram}
+  \label{fig:state}
+\end{figure}
 
 \subsection{Tests}
-We measured the current of a non sink node to 13mA at 3.3v. The
-currnet measurement was made from the output of a 3.3v regulator. 
-The node was put in a always listening state. According to the 
-datasheet the radio module should consume a maximum of 11mA in
-listening mode.
+We measured the current of a non sink node to 13mA at 3.3v. The setup
+is shown in figure \ref{fig:Effekt} The current measurement was made from
+the output of a 3.3v regulator.  The node was put in a always
+listening state. According to the datasheet the radio module should
+consume a maximum of 11mA in listening mode.
 
 We did not to any tests for the power consumption in transmitting
 mode.
 
-
-\begin{center}
-\includegraphics[width=.5\textwidth]{EffektMätarSetup}
-\end{center}
+\begin{figure}[h!]
+  \includegraphics[width=\linewidth]{EffektMätarSetup}
+  \caption{Measuring current with high presision resistor and oscilloscope}
+  \label{fig:Effekt}
+\end{figure}
 
 Maximum range:
 We measured the maximum range of one hop to 80m in an outdoor 
