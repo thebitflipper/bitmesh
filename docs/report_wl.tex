@@ -1,0 +1,29 @@
+Wireless:
+
+Initial idea and goals The initial goal of this project was to make a
+network of cheap radio modules. The inteded use cases were remote
+monitoring and home automation. We decided to try to implement a mesh
+routing protocol to extend the range of the network.
+
+Initial research and design decisions: 
+
+We started off by reading the
+specifications for the intended nrf24l01+ modules. These modules have
+126 channels in the 2.4-2.525GHz range, uses gaussian frequency shift
+keying and can send 2Mbps, 1Mbps or 250Kbps. In 2Mbps mode the nodes
+uses 2Mhz of bandwidth while in 1Mbps and 250Kbps the nodes uses only
+1Mhz of bandwidth.  The nodes uses a three, four or five byte long
+adress for all packets, can listen to at most six adresses at the same
+time where five of the addresses can only differ in the last byte. The
+nodes support automatic acknoledgements but with some restrictions,
+the adress of the receiving node needs to be in a special address slot
+of the transmitting node.  Considering these restrictions we chose to
+save the adresses of the neighbours inside an external microcontroller
+instead of in the nrf24l01+ chip. This enables us to connect to many
+more nodes and makes it easier to enable the automatick
+acknowledgement feature
+
+
+TESTS:
+Sleep node: 2mA 
+Active: 13mA
