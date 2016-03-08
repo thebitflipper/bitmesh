@@ -3,7 +3,8 @@
 \usepackage[british]{babel}
 \usepackage{graphicx}
 
-\usepackage{hyperref}  % should always be the last package
+\usepackage{hyperref}
+\bibliographystyle{ieeetran}
 
 \title{\textbf{Microcontroller Programming (course 1TE663) \\
     Uppsala University -- Spring 2016 \\
@@ -86,10 +87,10 @@ If the node gets a reply from another node it goes into the
 collecting parents state. The node stays and listens to the channel for
 a fixed amount of time. If more nodes than one replies to the
 broadcast the node chooses the one with the smallest hop-count and moves to
-either the wait_for_Address state or the connected state.  If this
+either the wait\_for\_Address state or the connected state.  If this
 node has received an address before it will go directly to the connect
 state. Otherwise it will ask the network to give it a free address and
-go into the wait_for_address state.  ...... continue to describe the
+go into the wait\_for\_address state.  ...... continue to describe the
 state shiet. Explain why we choose polling or interrupts....
 
 
@@ -114,4 +115,13 @@ enviroment @ 2.52GHz.
 \begin{center}
 \includegraphics[width=.5\textwidth]{map}
 \end{center}
+
+\cite{label}
+
+\begin{thebibliography}{2}
+
+\bibitem{label}
+  Person/Företag. "\emph{Titel}". sida [Online]. Available: \url{https://...} [Accessed: Dec. 07, 2015]
+
+\end{thebibliography}
 \end{document}
