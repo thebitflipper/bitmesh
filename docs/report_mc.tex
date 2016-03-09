@@ -2,7 +2,7 @@
 \usepackage{fullpage}
 \usepackage[british]{babel}
 \usepackage{graphicx}
-
+\usepackage{float}
 \usepackage{hyperref}
 \bibliographystyle{ieeetran}
 
@@ -112,11 +112,20 @@ enviroment @ 2.52GHz.
  
 
 \section{Interface}
-\begin{center}
-\includegraphics[width=.5\textwidth]{map}
-\end{center}
+To make it easier to visualizing the network we made a program in Go,
+it has a web interface and a backend. The backend reads data from a
+connected sink node over the serial inteface, it will parse the read
+messages and send routing, ping and link quality message over a
+websocket to the clients, who are connected via the web interface. The
+web interface will display the network as shown in \autoref{fig:web}.
 
-\cite{label}
+\begin{figure}[H]
+  \begin{center}
+    \includegraphics[width=.5\textwidth]{map}
+  \end{center}
+  \caption{Node 6 is connected to the sink which just received a ping from it.}
+  \label{fig:web}
+\end{figure}
 
 \begin{thebibliography}{2}
 
