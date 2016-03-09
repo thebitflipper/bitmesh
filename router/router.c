@@ -15,14 +15,6 @@
 #define set_output(portdir,pin) portdir |= (1<<pin)
 #define toggle_output(portdir,pin) portdir ^= (1<<pin)
 
-
-void as(uint8_t reg, uint8_t expect){
-	if(NRF24_get_register(reg) != expect){
-		printf("0x%02hhX is -> 0x%02hhX\n", reg, NRF24_get_register(reg));
-	}
-
-}
-
 void start_sleeping() {
 	// clear various "reset" flags
 	MCUSR = 0;
@@ -71,48 +63,30 @@ int main() {
 
 	uart_init();
 	systick_init();
-	mesh_init(0);
-	printf("INIT!\n");
 
         set_output(DDRB, PB0);
 
-	/* unsigned long p_delay = systick; */
+	/* Keep led on while node is initializing */
+        output_high(PORTB, PB0);
+	mesh_init(0);
+        output_low(PORTB, PB0);
+
 	for(;;){
 
-                /* if(systick < 10000){ */
                 mesh_poll(systick);
                 if(mesh_is_connected()){
+			/* Short bursts of light when connected */
                         output_high(PORTB, PB0);
                         _delay_us(40);
                         output_low(PORTB, PB0);
                         _delay_ms(20);
                 } else {
+			/* Blink while unconnected */
                         output_high(PORTB, PB0);
-                        _delay_ms(20);
+                        _delay_ms(10);
                         output_low(PORTB, PB0);
+                        _delay_ms(10);
                 }
-                /* } else { */
-
-                /*         NRF24_power_down(); */
-                /*         start_sleeping(); */
-                /* } */
-		/* as(CONFIG,     0x0B); */
-		/* as(EN_AA,      0x3F); */
-		/* as(EN_RXADDR,  0x07); */
-		/* as(SETUP_AW,   0x03); */
-		/* as(SETUP_RETR, 0x35); */
-		/* as(RF_CH,      0x78); */
-		/* as(RF_SETUP,   0x27); */
-		/* as(STATUS,     0x0E); */
-		/* as(DYNPD,      0x00); */
-		/* as(FEATURE,    0x01); */
-		/* printf("test %d %lu\n", mesh_is_connected(), systick); */
-		/* if((systick - p_delay) > 10000){ */
-		/* 	NRF24_print_registers(); */
-		/* 	p_delay = systick; */
-		/* } */
-
-
 
 	}
 	return 0;

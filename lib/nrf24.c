@@ -8,7 +8,7 @@
 
 uint8_t nrf24_status = 0;
 uint8_t nrf24_waiting_for_ack = 0;
-uint8_t nrf24_p0_addr_save[5] = {};
+/* uint8_t nrf24_p0_addr_save[5] = {}; */
 uint8_t nrf24_p0_use_ack = 1;
 
 void NRF24_set_tx_addr(uint8_t *addr);
@@ -53,6 +53,25 @@ void NRF24_clear_bit(uint8_t reg, uint8_t bit){
 	NRF24_set_register(reg, r);
 }
 
+uint8_t NRF24_is_module_connected(){
+	/* Try to read the RC_CH register */
+        uint8_t save = NRF24_get_register(RF_CH);
+	/* Generate a vaild channel */
+        uint8_t new = save > 70 ? 30 : save+1;
+	/* Write the channel to the rf module */
+        NRF24_set_register(RF_CH, new);
+        _delay_us(200);
+        uint8_t ret = 0;
+	/* Read RF_CH and compare it to the value we wrote earlier, if
+	   the value is the same the rf module is connected */
+        if(NRF24_get_register(RF_CH) == new){
+                ret = 1;
+        }
+	/* Restore the original address */
+        NRF24_set_register(RF_CH, save);
+        return ret;
+}
+
 void NRF24_init(
 		uint8_t use_interrupts, /* 0 or 1 */
 		uint8_t use_crc /* 0, 1 or 2 bytes */
@@ -62,6 +81,12 @@ void NRF24_init(
 	DDRB |= (1 << CE);
 	DDRB |= (1 << CSN);
 	SPI_init();
+
+        while(!NRF24_is_module_connected()){
+                _delay_ms(3);
+        }
+
+
 	uint8_t r =
 		(use_interrupts   << MASK_RX_DR  )|
 		(use_interrupts   << MASK_TX_DS  )|
