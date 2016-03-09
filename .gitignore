@@ -2,3 +2,7 @@
 *.o
 *.hex
 /docs/states.png
+*.log
+*.aux
+*.out
+*.toc
