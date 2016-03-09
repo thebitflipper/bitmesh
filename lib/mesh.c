@@ -5,7 +5,7 @@
 #include "includes.h"
 #include <string.h>
 #include <avr/eeprom.h>
-
+#include <spi.h>
 
 #ifndef cb
     #define cb(reg, bit)    reg &= ~(1<<bit) //clear bit
@@ -34,23 +34,23 @@
 /* Max number of nodes */
 #define MESH_MAX_NODES 32
 
-/* The max number of children per node. This is for testing
+/* The max number of children per node. This can be lowered for testing
    purposes */
-#define MESH_MAX_CHILDREN 2
+#define MESH_MAX_CHILDREN MESH_MAX_NODES
 
 /* How long after the best node offer should we wait before accepting
    it. */
-#define MESH_COLLECT_PARENTS_TIMEOUT 500
+#define MESH_COLLECT_PARENTS_TIMEOUT 300
 
 /* How long should we remain in the reconnect state. */
-#define MESH_RECONNECT_TIMEOUT 500
+#define MESH_RECONNECT_TIMEOUT 300
 
 /* Delay between broadcasts */
-#define MESH_BROADCAST_INTERVAL 200
+#define MESH_BROADCAST_INTERVAL 100
 
 /* Delay between new address requests when waiting for a new
    address */
-#define MESH_W_FOR_ADDR_TIMEOUT 10000
+#define MESH_W_FOR_ADDR_TIMEOUT 4000
 
 /* Delay between ping to sink */
 #define MESH_PING_INTERVAL 500
@@ -145,6 +145,7 @@ struct potential_parent {
         uint8_t got_parent;
 };
 
+
 struct mesh_state {
 	/* Last time mesh poll ran */
 	uint32_t last_ms;
@@ -172,8 +173,8 @@ struct mesh_state {
 	/* We store the potential parents in this struct */
 	struct potential_parent pot;
 
-	uint32_t packets_sent;
-	uint32_t retransmits;
+	uint16_t packets_sent;
+	uint16_t retransmits;
 };
 
 uint8_t *mesh_eeprom_addr      = (uint8_t*)0x00;
@@ -501,7 +502,6 @@ uint8_t mesh_accept_route(){
 }
 
 void mesh_init(uint8_t is_sink){
-	_delay_ms(100);
 	mesh.last_ms = 0;
 	mesh.last_addr = 0;
 	mesh.last_state_ms = 0;
@@ -847,6 +847,7 @@ void mesh_poll(){
 					mesh_publish_route(mesh.parent, mesh.rx_buffer[4], mesh.rx_buffer[5]);
 				} else {
                                         if(mesh_get_parent(mesh.rx_buffer[4]) != 255){
+                                                /* Alert old parent that node has moved */
                                                 mesh_publish_del_route(mesh_get_parent(mesh.rx_buffer[4]),
                                                                        mesh.rx_buffer[4],
                                                                        mesh_get_parent(mesh.rx_buffer[4]));
