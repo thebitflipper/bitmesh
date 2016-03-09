@@ -24,46 +24,45 @@
 The main goal of this project was to design a protocol to
 network a lot of microcontroller using cheap nrf24l01+ modules.  We
 decided to develop a self organizing spanning tree mesh network using
-a pre-defined node to be sink.  The sink was connected to a pc which
+a predefined node to be sink.  The sink was connected to a PC which
 made the mesh network available though a web socket.  The result is
 the possibility to make large, cheap, long-range networks which are
-accessable though the internet.  Possible use-cases include remote
+accessible though the internet.  Possible use-cases include remote
 monitoring and home automation.
 
 \section{Design decisions}
-The radiomodules support automatic acknoledgement of packets with
-optional retransmissions\cite{nrfDS}. This enabled us to easily make the
-communication between two modules reliable. The auto acknoledgement
+
+The radio modules support automatic acknowledgment of packets with
+optional retransmissions. This enabled us to easily make the
+communication between two modules reliable. The auto acknowledgment
 feature was used in all communication except for new nodes
 broadcasting to connect to the network.
 
 The radio modules uses GFSK in the 2.4-2.5125Ghz range with support of
-datarates from 250Kbps up to a maximum of 2Mbps. The channels are 1Mhz
-wide and there are 126 different channels\cite{nrfDS}. We decided to use the same
-frequency for all nodes in the same network to decrease the complexity
-of the communication. This makes all communication within the network
-interfere but since all communication is acknowledged and checksummed
-this won't impact the reliablity of the data.
-
-The radiomodules has internal addressing with addresses consisting of
-3-5 bytes. Each module can listen for up to six adresses at the same
-time but five of these adresses can only differ in their last
-byte\cite{nrfDS}. We decided to let the mcu save the addresses and
-routing table and only use two of the addresses in the radio
-modules. One for broadcast messages and one for unicast messages
-directed towards the specified node. This approach makes it possible
-for one node to be parent to a large amount of nodes.
+data rates from 250Kbps up to a maximum of 2Mbps. The modules uses 1MHz
+of bandwidth per channel and support 125 different channels. We
+decided to use the same frequency for all nodes in the same network to
+decrease complexity. This makes all communication within the network
+interfere. The radio modules has internal addressing with addresses
+consisting of 3-5 bytes. Each module can listen for up to six addresses
+at the same time but five of these addresses can only differ in their
+last byte. We decided to let the mcu save the addresses and routing
+table and only use two of the addresses in the radio modules. One for
+broadcast messages and one for unicast messages directed towards the
+specified node.
 
 We studied different routing protocols for making a mesh-network,
-initally we wanted to have a complete mesh network without a sink but
-due to the limited amout of memory availible on the chosen mcu we
+initially we wanted to have a complete mesh network without a sink but
+due to the limited amount of memory available on the chosen mcu we
 decided to go for a spanning tree network instead. We figured that
 this would make the routing table use less memory since and be less
-complex. Each node keeps a routing table of all nodes locaded below
-them in the network and their corresponding parent node. The sink is
-the highest parent. This approach uses memory scaling linearly with
-the amount of nodes in the network. The nodes only need to know the
-route to the nodes located below themselves.
+complex.
+
+Each node keeps a routing table of all nodes located below them in the
+network and their corresponding parent node. The sink is the highest
+parent. This approach uses memory scaling linearly with the amount of
+nodes in the network. The nodes only need to know the route to the
+nodes located below themselves.
 
 The adress of a node is saved in the microcontrollers EEPROM memory.
 This makes it possible to completely shut down a node without it 
@@ -75,60 +74,94 @@ all active adresses.
 
 \subsection{Hardware}
 Each node consists of one atmega328p mcu running from the
-internal oscillator at 8Mhz. It's connected to a nrf24l01+ through the
+internal oscillator at 8MHz. It's connected to a nrf24l01+ through the
 SPI port. The mcu can be connected to an rs232 adapter to enable
 debugging messages to a computer. The sink mcu is connected to an
 rs232 adapter to interface with the PC. The nodes accept an input
 voltage from 2.4v to 3.6v. Since the NRF24l01+ modules can be run at a
 minimum of 1.8v we could potentially run the node at 1.8v but this
-would require a lower clockfrequency for the mcu\cite{Atmega}. 
+would require a lower clock frequency for the mcu\cite{Atmega}. 
 
 We built some battery powered nodes that runs from a li-ion battery
 connected to a 3.3v regulator. The regulator is needed to keep the 
 input voltage to the radiomodule below 3.6v.
 
-
-
 \subsection{Software}
-The software on the mcu acts as a big statemachine shown in Figure \ref{fig:state}.
+The software on the mcu acts as a big state machine. At startup the
+mcu is in the unconnected stated. In this state the node is completely
+unconnected the network. If a node want's to join a network it needs
+to send a broadcast which makes it go into the COLLECTING PARENTS
+state. The node will remain in this state until a offer to connect has
+been received and a timeout has passed since the last best offer. The
+best node is chosen based on hopcount. The lower the hopcount the
+better.
 
-At startup the mcu is in the unconnected stated. In this state the
-node is completely unconnected the network. If a node want's to join a
-network it needs to send a broadcast which makes it go into the BRD
-SENT state. As long as it does not receive any replies the mcu stays
-in this state and sends new broadcasts with a fixed interval.
+After the timeout has passed a connection attempt is made to the
+choosen parent. If this is successful the node will move on to the
+next stage, if not the node will try to find a parent again.
 
-If the node gets a reply from another node it goes into the collecting
-parents state. The node stays here and listens to the channel for a
-fixed amount of time. If more than one node replies to the broadcast
-the node replies to the node with the smallest hop-count and moves to
-either the WAIT FOR ADDDRESS state or the CONNECTED STATE. If this
-node has received an address before it will keep that address and go
-directly to the connect state. Otherwise it will ask the network to
-give it a free address and go into the WAIT FOR ADDRESS state.
+Now the node determines if it requires an address or already has one
+stored in EEPROM. If an address is required it will ask the sink for a
+free address. When the node has a proper address it considers itself
+connected to the network.
 
-In the WAIT FOR ADDRESS state the parent node will recognize that the
-new nodes does not have an adress and will request a new address from
-the sink node. 
+Now the node will periodically send and receive pings and pongs to and
+from the sink node.
 
-The CONNECTED STATE is the default state for an active node. The node
-is in receive mode and will listen to the channel constantly. When
-it receives a packet it will check if the packet was meant for
-itself or if it should re-send it.
+When a packet is received that is not destined for this node routing
+must be performed. The next hop is calculated and the packet is send
+there.
 
+\subsubsection{Handling packetloss}
+When the node tries to send a packet to a another node without
+receiveing an ack a couple of resends are perfomed. If the packet is
+not sent successfully after the retries the node is considered out of
+range. If this was the nodes parent the node now considers itself
+disconnected from the network. It will first try to find a new parent
+without alerting its children to reconnect. If this fails it will
+continue to try to find a parent but also disconnect its children from
+the network.
 
-\begin{figure}[h!]
-  \includegraphics[width=\linewidth]{states}
-  \caption{State Diagram}
-  \label{fig:state}
-\end{figure}
+If the target node is a child the child is removed from the routing
+table and this route delete is pushed upwards.
+
+Stats are logged when sending packets to the parent node. These stats
+are sent to the sink node as a single byte. This byte should be
+divided by 10 and then it represents how many transmissions the node
+must perform before a packet reaches the nodes parent.
+
+\subsubsection{Handling nodes that temporary are out of range}
+If a node gets a packet directly from a unknown node that is not in
+its routing table the node is added to the routing table, the node is
+sent this nodes hopcount and the new route is pushed upwards.
+
+If a node get a packet from an unknown node that is relayed through a
+direct child the node must ask, through the relaying node, the unknown
+node to publish its route upwards.
+
+\subsubsection{Handling potential route loops}
+To speed up the reconnection to the network some design choices were
+made so that in some cases route loops can be formed. These loops are
+detected when a node receives a packet from itself. The node then
+considers itself unconnected so that its children will also do so.
+
+\subsubsection{Informing old parents of nodes}
+When the sink node sees that a node has changed parent the sink send a
+route delete to the old parent of the node. This update will then
+propagate through all the nodes that had the old route information in
+their routing tables.
+
+\subsubsection{How the sink manages free addresses}
+The sink stores iniformation about free addresses in EEPROM.  When the
+sink receives a request for a new address it searches after the first
+unused address and sends this address back to the requesting node.
 
 \subsection{Tests}
-We measured the current of a non sink node to 13mA at 3.3v. The setup
-is shown in figure \ref{fig:Effekt} The current measurement was made from
-the output of a 3.3v regulator.  The node was put in a always
-listening state. According to the datasheet the radio module should
-consume a maximum of 11mA in listening mode.
+We measured the current of a non sink node to 13mA at 3.3v. The
+current measurement was made from the output of a 3.3v regulator.
+The node was put in a always listening state. According to the
+datasheet the radio module should consume a maximum of 11mA in
+listening mode.
 
 We did not to any tests for the power consumption in transmitting
 mode.
@@ -144,7 +177,7 @@ We measured the maximum range of one hop to 80m in an outdoor
 enviroment when transmitting at 2.52GHz. 
 The maximum indoor range was measured to 70m in an indoor
 enviroment transmiting at 2.52GHz. Both tests were done with the nodes within line-of-sight.
- 
+
 
 
 \section{Interface}

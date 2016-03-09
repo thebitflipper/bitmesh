@@ -9,6 +9,9 @@
 ** TODO Some sort of broadcast "who can we see".
    So that we can query the nodes for possible connections. Mayby with
    a counter so we can detect lost packets.
+** DONE Send link status to sink.
+   Similar to the packetloss counter but no action is taken based on
+   the value.
 ** TODO A packetloss counter.
    Maybe we want to connect to another node if the current parent is
    shitty.
@@ -36,7 +39,7 @@
    So that the parents of nodes that moved removes their route.
 ** DONE Inform parent if child goes away.
    So that the sink knows of dissapering nodes
-** TODO Remove alive check for faster reconnects
+** DONE Remove alive check for faster reconnects
    When a node(A) sees a packet from its parent that was forwarded
    through a child the parent node has reconnected and formed a route
    loop. Node A can then send broadcast with a check flag set so that
@@ -44,5 +47,11 @@
    connected to the sink. To reduce the amount of sink alive checks we
    can send broadcasts indicating that we are unconnected but do not
    want a reply, so that children can act and do the same thing.
-** TODO Fix error on startup
-Make sure that the radio module is alive before init
+** DONE Fix error on startup
+   Make sure that the radio module is alive before init. We are having
+   problems on init. The module does not function correctly when applying
+   power to the node for the first time. Perhaps we need to make sure
+   that the node is responding before configiring it.
+** TODO Add support for removal of reseverd nodes in sink.
+   The sink node needs to be able to remove reserverd addresses from
+   eeprom when asked by the interface.

@@ -1,7 +1,7 @@
 digraph graph_name {
         graph [
-    charset = "UTF-8";
-    label = "bitmesh",
+    charset = "UTF-8"
+    // label = "bitmesh",
     // labelloc = "t",
     // labeljust = "c",
     // bgcolor = "#343434",
@@ -11,9 +11,12 @@ digraph graph_name {
     // style = "filled",
     rankdir = TB,
     // margin = 1,
-    // splines = spline,
+    // splines = polyline,
     // ranksep = 1.0,
     // nodesep = 0.9
+    outputorder = edgesfirst,
+    overlap=prism,
+    pack=true,
   ];
 
   node [
@@ -37,17 +40,17 @@ digraph graph_name {
     // color = white,
     // labelfloat = true,
     // labeldistance = 2.5,
-    // labelangle = 70
+    // labelangle = 70,
   ];
 
 
   // node define
-  MESH_STATE_UNCONNECTED [color=1];
-  MESH_STATE_BRD_SENT [color=1];
-  MESH_STATE_CONNECTED [color=1];
-  MESH_STATE_W_FOR_ADDRESS [color=1];
-  MESH_STATE_COLLECTING_PARENTS [color=1];
-  MESH_STATE_RECONNECTING [color=1];
+  MESH_STATE_UNCONNECTED [color="#49483E", fontcolor="#C0C0C0"];
+  // MESH_STATE_BRD_SENT [color="#49483E", fontcolor="#C0C0C0"];
+  MESH_STATE_CONNECTED [color="#49483E", fontcolor="#C0C0C0"];
+  MESH_STATE_W_FOR_ADDRESS [color="#49483E", fontcolor="#C0C0C0"];
+  MESH_STATE_COLLECTING_PARENTS [color="#49483E", fontcolor="#C0C0C0"];
+  MESH_STATE_RECONNECTING [color="#49483E", fontcolor="#C0C0C0"];
 
   ACCEPT_PARENT [label="Accepting parent"];
   HAVE_ADDRESS [label="Have address?", shape=box]
@@ -55,54 +58,66 @@ digraph graph_name {
   FORWARD_PACKET [label="Forward packet"]
   PROCESS_PACKET [label="Process packet"]
   SEND_PACKET [label="Send packet"]
+  SEND_NO_ACK_PACKET [label="Send packet, no ack"]
   FAILED_TO_SEND [label="Failed to send"]
 
-  PACKET_NEW_ROUTE [label=" New route\nAdd route"]
-  PACKET_DEL_ROUTE [label=" Delete route\Remove route"]
-  PACKET_BROADCAST [label=" Broadcast"]
-  PACKET_PING      [label=" Ping"]
+  PACKET_NEW_ROUTE [label=" New route\nAdd route", color="#fa83b6"]
+  PACKET_DEL_ROUTE [label=" Delete route\nRemove route", color="#fa83b6"]
+  PACKET_BROADCAST [label=" Broadcast", color="#fa83b6"]
+  PACKET_PING      [label=" Ping", color="#fa83b6"]
   // subgraph {
   //         rank = same; MESH_STATE_UNCONNECTED; MESH_STATE_BRD_SENT; MESH_STATE_CONNECTED; MESH_STATE_W_FOR_ADDRESS; MESH_STATE_COLLECTING_PARENTS; MESH_STATE_RECONNECTING;
   // }
 
-  subgraph {
-          rank = same;
-          FORWARD_PACKET;
-          PROCESS_PACKET;
-  }
+  // subgraph {
+  //         rank = same;
+  //         FORWARD_PACKET;
+  //         PROCESS_PACKET;
+  // }
 
   subgraph {
           rank = same;
-          PACKET_BROADCAST;
-          PACKET_PING;
-          PACKET_NEW_ROUTE;
-          PACKET_DEL_ROUTE
-  }
-
-  subgraph {
-          rank = same;
-          MESH_STATE_W_FOR_ADDRESS;
-          MESH_STATE_CONNECTED;
-          MESH_STATE_UNCONNECTED;
+          // rankdir = LR;
+          MESH_STATE_UNCONNECTED
+          FOR_US;
+          // PACKET_BROADCAST;
+          // PACKET_PING;
+          // PACKET_NEW_ROUTE;
+          // PACKET_DEL_ROUTE
+          // MESH_STATE_COLLECTING_PARENTS;
 
   }
 
-  subgraph {
-          rank = same;
-          MESH_STATE_COLLECTING_PARENTS;
-          MESH_STATE_BRD_SENT;
+  // subgraph {
+  //         rank = same;
+  //         // MESH_STATE_W_FOR_ADDRESS;
+  //         MESH_STATE_CONNECTED;
+  //         MESH_STATE_UNCONNECTED;
+  //         // MESH_STATE_W_FOR_ADDRESS;
+  //         // MESH_STATE_RECONNECTING;
+  //         // MESH_STATE_COLLECTING_PARENTS
 
-  }
+  // }
+
+
+  // subgraph {
+  //         rank = same;
+  //         MESH_STATE_COLLECTING_PARENTS;
+  //         // MESH_STATE_BRD_SENT;
+
+  // }
   // edge define
-  MESH_STATE_UNCONNECTED -> MESH_STATE_BRD_SENT;
-  MESH_STATE_BRD_SENT -> MESH_STATE_BRD_SENT [label="No response"];
-  MESH_STATE_BRD_SENT -> MESH_STATE_COLLECTING_PARENTS [label="One response"];
-  MESH_STATE_COLLECTING_PARENTS -> ACCEPT_PARENT;
-  ACCEPT_PARENT -> MESH_STATE_UNCONNECTED;
-  ACCEPT_PARENT -> HAVE_ADDRESS;
+  MESH_STATE_UNCONNECTED -> MESH_STATE_COLLECTING_PARENTS;
+  // MESH_STATE_BRD_SENT -> MESH_STATE_BRD_SENT [label="No response"];
+  // MESH_STATE_BRD_SENT -> MESH_STATE_COLLECTING_PARENTS [label="One response"];
+  MESH_STATE_COLLECTING_PARENTS -> MESH_STATE_COLLECTING_PARENTS [label="Send broadcast\nDisconnect children"];
+  MESH_STATE_COLLECTING_PARENTS -> ACCEPT_PARENT [label="Got offer and timeout"];
+  ACCEPT_PARENT -> MESH_STATE_UNCONNECTED [label="No ack"];
+  ACCEPT_PARENT -> HAVE_ADDRESS [label="Ack"];
   HAVE_ADDRESS -> MESH_STATE_CONNECTED [label=" yes"];
   HAVE_ADDRESS -> MESH_STATE_W_FOR_ADDRESS [label=" no"];
   MESH_STATE_W_FOR_ADDRESS -> MESH_STATE_CONNECTED [label=" Got new address"]
+  MESH_STATE_W_FOR_ADDRESS -> MESH_STATE_UNCONNECTED [label=" Connection failure"]
   MESH_STATE_CONNECTED -> GOT_PACKET
   GOT_PACKET -> FOR_US
   FOR_US -> FORWARD_PACKET [label=" no"]
@@ -113,15 +128,20 @@ digraph graph_name {
   SEND_PACKET -> FAILED_TO_SEND [label=" No ack, retry threshold reached"]
   SEND_PACKET -> SEND_PACKET [label=" No ack, retry"]
   FAILED_TO_SEND -> MESH_STATE_RECONNECTING [label=" Target was parent"]
-  MESH_STATE_RECONNECTING -> MESH_STATE_UNCONNECTED [label=" Timeout "]
-  MESH_STATE_RECONNECTING -> SEND_PACKET [label=" Connected to new parent"]
+  MESH_STATE_RECONNECTING -> MESH_STATE_COLLECTING_PARENTS [label=" Timeout "]
+  MESH_STATE_RECONNECTING -> SEND_PACKET [label=" Connected to (new) parent"]
 
   PROCESS_PACKET -> PACKET_PING
   PROCESS_PACKET -> PACKET_BROADCAST
-  PACKET_BROADCAST -> SEND_PACKET [label=" Make offer"]
+  PACKET_BROADCAST -> SEND_NO_ACK_PACKET [label=" Make offer"]
   PACKET_PING -> SEND_PACKET [label=" Send pong"]
   PROCESS_PACKET -> PACKET_NEW_ROUTE
   PACKET_NEW_ROUTE -> MESH_STATE_CONNECTED
   PROCESS_PACKET -> PACKET_DEL_ROUTE
+  PACKET_DEL_ROUTE -> MESH_STATE_CONNECTED
+
+  SEND_NO_ACK_PACKET -> MESH_STATE_CONNECTED
+
+  FAILED_TO_SEND -> MESH_STATE_CONNECTED [label=" Target was direct child.\nDelete child from routing table\nPublish del route upwards"]
 
 }
