@@ -822,8 +822,6 @@ void mesh_poll(){
 					/* Pong not for us! */
 					D("Pong not for us!\n");
 				} else {
-					/* TEMP */
-					PORTB &= ~(1 << PB0);
 					if(RX_FROM == MESH_ADDR_SINK){
 						/* This pong is from the sink */
 						mesh.last_pong = systick;
